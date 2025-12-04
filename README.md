@@ -75,6 +75,8 @@ higher ROC-AUC and a lower Brier score. This demonstrates that the
 transaction data adds meaningful predictive signal and improves overall
 model performance.
 
+![ablationtable_features](https://github.com/user-attachments/assets/71562841-c4a3-4cbd-b6a4-545403e119a2)
+
 -- Feature Importance:
 Gain: How much the feature improves model accuracy (i.e., average
 reduction in loss when it’s used in a split)
@@ -94,7 +96,10 @@ the model used it structurally)
 The top two, ext_source_2/3 are the most powerful predictors of default risk.
 To recall, these variables are the normalized creditworthiness scores
 from external data sources. The transaction data provides complementary
-insights that further enhance model accuracy. 
+insights that further enhance model accuracy.
+
+![feature importance](https://github.com/user-attachments/assets/f5c81613-39ab-4da9-9a21-a5f755a24341)
+
 
 -- Hypothetical Scenario:
 Creating a hypothetical scenerio gives us insight on the models capability 
@@ -116,7 +121,8 @@ sampled data the model was trained on. Then found the prediction of default.
 Using the Platt scale calibration, we got a prediction of default of .1 and no 
 default of .89. Derek is a safe applicant and is not considered high risk. 
 
-<img src="is6812/Tables/Derek Predictions.png" width="350">
+<img width="225" height="73" alt="Derek Predictions" src="https://github.com/user-attachments/assets/95956031-9155-43c0-ad82-3cd0e14f644b" />
+
 
 # Data Source
 
