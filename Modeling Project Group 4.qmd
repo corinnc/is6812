@@ -1,0 +1,1883 @@
+---
+title: "Home Credit Default Risk Modeling"
+author: "Group 4 - Corinn Childs, Gaby Rodriguez, Joel Jorgensen, Josh Mcalister"
+date: today
+format: 
+  html:
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    toc-title: "Contents"
+    embed-resources: true
+execute:
+  include: true
+  eval: true    
+  warning: false
+  message: false
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+# Introduction
+
+Home Credit is a multinational provider focused on making financial
+services more accessible to people without traditional credit histories,
+often referred to as the unbanked. This group represents missed revenue
+for the company and a poor experience for prospective borrowers. The
+company’s goal is to provide fair opportunities to individuals who are
+often excluded from borrowing. A variety of data sources are available
+to assess creditworthiness, enabling Home Credit to extend loans to
+those traditionally considered unbanked. In this project, we use the
+available data sources to build predictive models that estimate the
+probability of default. These insights will help Home Credit make
+smarter lending decisions, reduce financial risk, and give qualified
+clients a better chance to succeed.
+
+# Business Problem
+
+Home Credit is a company that focuses on making financial services more
+accessible for people who don’t have traditional credit histories, often
+referred to as the unbanked. Their goal is to give fair opportunities to
+those who are often excluded from borrowing. One of their main
+challenges is figuring out which clients are likely to repay their
+loans. In this project, we’ll use the data to build predictive models
+that estimate the chance of default. These insights will help Home
+Credit make smarter lending decisions, reduce financial risk, and give
+qualified clients a better chance to succeed.
+
+## Analtyics Problem
+
+Home Credit customers include those with and without traditional credit
+histories. In evaluating which customers should be extended credit, the
+company needs a predictive model for determining which customers are
+likely to experience loan repayment difficulties. The company needs a
+single model that makes use of all the available data for a given
+customer, to make the most accurate prediction. For different customers,
+the available data will differ. For all clients we have data provided as
+part of the application process, though not all data points are
+available or applicable for each customer. In addition to this we have
+four other data sets that have potentially relevant details, the
+presence of this data for a given customer also differs. A single joined
+data set is compiled with all available data, with this data we trained
+a model that best makes use of the available information while
+accounting for the cases where information is lacking for a given
+customer. The actual process of data preparation will be handled in a
+future section.
+
+# Load Data and Setup
+
+First step is setting up workbook with needed packages, and loading in
+all of the data sets.
+
+```{r library}
+pacman::p_load(tidyverse, caret, janitor, skimr, recipes, themis, rlang, tidymodels, here, AppliedPredictiveModeling, brulee, torch, pROC,yardstick,tibble, glmnet, randomForest, tidymodels, xgboost, caretEnsemble)
+```
+
+```{r load data application train}
+#load file - assumes you have copy of file in working directory
+hc_train <- read.csv(here::here("data", "application_train.csv"), stringsAsFactors = TRUE)
+
+#standardize variable names
+hc_train <- hc_train |>
+  rename_with(tolower)
+
+#convert target and select numeric indicators to factors
+hc_train <- hc_train |>
+  mutate(
+    target = as.factor(target),
+    across(starts_with("flag"),as.factor),
+    across(starts_with("reg_"),as.factor),
+    across(starts_with("live_"),as.factor)
+    )
+
+```
+
+```{r load data bureau}
+#load file - assumes you have copy of file in working directory
+bureau_data <- read.csv(here::here("data", "bureau.csv"), stringsAsFactors = TRUE)
+
+#standardize variable names
+bureau_data <- bureau_data |>
+  rename_with(tolower)
+
+```
+
+```{r load data installment}
+#load file - assumes you have copy of file in working directory
+installment_data <- read.csv(here::here("data", "installments_payments.csv"), stringsAsFactors = TRUE)
+
+#standardize variable names
+installment_data <- installment_data |>
+  rename_with(tolower)
+
+```
+
+```{r load credit card data}
+#load file - assumes you have copy of file in working directory
+credit_card_data <- read.csv(here::here("data","credit_card_balance.csv"), stringsAsFactors = TRUE)
+
+#filter to only include selected columns
+credit_card_data <- credit_card_data |>
+  select(
+    SK_ID_CURR,
+    MONTHS_BALANCE,
+    AMT_BALANCE,
+    AMT_CREDIT_LIMIT_ACTUAL,
+    AMT_INST_MIN_REGULARITY,
+    AMT_PAYMENT_CURRENT,
+    AMT_PAYMENT_TOTAL_CURRENT,
+    SK_DPD
+  )
+```
+
+```{r load pos bal data}
+#load file - assumes you have copy of file in working directory
+pos_cash_data <- read.csv(here::here("data","POS_CASH_balance.csv"), stringsAsFactors = TRUE)
+
+#filter to only include selected columns
+pos_cash_data <- pos_cash_data |>
+  select(SK_ID_CURR,
+         MONTHS_BALANCE,
+         CNT_INSTALMENT,
+         CNT_INSTALMENT_FUTURE,
+         SK_DPD
+  )
+```
+
+# Data Cleaning and Preparation
+
+For application data a few initial preparation steps were completed.
+First, we removed any columns where over half of the data was missing,
+with one exception of ext_source_1 which \~56% was missing. For the
+dropped columns with so much missing we would likely be creating more
+noise by trying to impute values for all the missing data. Also, the
+columns removed don’t appear to be that relevant, for example a good
+portion are characteristics about the building a person lives in. The
+exception was made for ext_source_1 which is a credit score metric and
+likely has predictive power. Outliers were evaluated and only one data
+point needed to be removed, for an individual with an income over 100
+million, all other rows were left intact.
+
+Four additional sources were brought in they are as follows.
+
+-   **Credit Bureau -** All client's previous credits provided by other
+    financial institutions that were reported to Credit Bureau
+
+-   **Installment Loan -** Repayment history for the previously
+    disbursed credits in Home Credit related to the loans in our sample.
+
+-   **Credit Card -** Monthly balance snapshots of previous credit cards
+    that the applicant has with Home Credit
+
+-   **Point of Sales and Cash Loans -** Monthly balance snapshots of
+    previous POS (point of sales) and cash loans that the applicant had
+    with Home Credit.
+
+## Additional Data Source Preperation
+
+For the below four data sets, if data existed for a client it often had
+several rows, to account for this in each data set select data metrics
+were aggregated at a customer level. These were various min, max,
+summed, average and difference values. For each data set quite a few
+where metrics were compiled for the available data points, so the exact
+details won’t be discussed.
+
+### Bureau Data
+
+```{r created aggregated bureau data}
+#creates new data frame of aggregated bureau data
+bureau_agg <- bureau_data |>
+    group_by(sk_id_curr) |>
+    summarise(
+      bur_n_loans = n(),
+      #status counts
+      bur_n_active       = sum(credit_active == "Active", na.rm = TRUE),
+      bur_n_closed       = sum(credit_active == "Closed", na.rm = TRUE),
+      #min/max days since credit application
+      bur_min_days_credit = suppressWarnings(min(days_credit, na.rm = TRUE)),
+      bur_max_days_credit = suppressWarnings(max(days_credit, na.rm = TRUE)),
+      #amount aggregates
+      bur_sum_credit_sum     = sum(amt_credit_sum, na.rm = TRUE),
+      bur_sum_credit_debt    = sum(amt_credit_sum_debt, na.rm = TRUE),
+      bur_sum_credit_overdue = sum(amt_credit_sum_overdue, na.rm = TRUE),
+      bur_sum_credit_limit   = sum(amt_credit_sum_limit, na.rm = TRUE),
+      #max overdue
+      bur_max_amt_credit_max_overdue = suppressWarnings(max(amt_credit_max_overdue, na.rm = TRUE)),
+      #credit type counts
+      bur_n_mortgage         = sum(credit_type == "Mortgage", na.rm = TRUE),
+      bur_n_auto             = sum(credit_type == "Car loan", na.rm = TRUE),
+      bur_n_consumer_credit  = sum(credit_type == "Consumer credit", na.rm = TRUE),
+      bur_n_credit_card      = sum(credit_type == "Credit card", na.rm = TRUE),
+      .groups = "drop"
+    )
+#removes infinity values created from min/max functions and changes to 0, INF and - INF occur if min/max is ran on NA values
+bureau_agg <- bureau_agg |> mutate(across(where(is.numeric), ~ ifelse(is.infinite(.x), NA_real_, .x)))
+#replace any remaining NA from aggregation with 0
+bureau_agg <- bureau_agg |>
+  mutate(across(where(is.numeric), ~ replace_na(.x, 0)))
+
+# check for any remaining NAs - none
+#bureau_agg |>
+  #filter(if_any(everything(), is.na))
+```
+
+### Installment Data
+
+```{r installment data}
+#take differences prior to aggregation
+installment_data <- installment_data |>
+  mutate(
+    day_dif = days_instalment - days_entry_payment,  # Difference between due date and payment date
+    amt_dif = amt_instalment - amt_payment           # Difference between amount due and amount paid
+  )
+
+# 2905 rows have NAs, which shows they haven't actually made that payment
+colSums(is.na(installment_data[, c("day_dif", "amt_dif")]))
+summary(installment_data[, c("day_dif", "amt_dif")])
+
+# view head of data
+installment_data |>
+  filter(is.na(day_dif) | is.na(amt_dif)) |> head(10)
+
+# remove instalment amounts = to 0
+installment_data <- installment_data |>
+  filter(amt_instalment != 0)
+```
+
+```{r installment data continued}
+#below creates calculated fields before aggregation is performed
+
+# set day dif to how long hasn't been paid if no payment
+installment_data <- installment_data |> mutate(day_dif = ifelse(is.na(day_dif),days_instalment,day_dif))
+# set amt dif to how much is unpaid if no payment
+installment_data <- installment_data |> mutate(amt_dif = ifelse(is.na(amt_dif),amt_instalment,amt_dif))
+# get ratio of payment difference compared to payment due, flag if paid on time, flag if payment missed
+installment_data <- installment_data |> mutate(paid_ratio = amt_dif / amt_instalment,
+                                               paid_late = ifelse(day_dif <= 0, 1,0),
+                                               missed_payment = ifelse(paid_ratio == 1, 1, 0))
+#filter to only have needed columns
+installment_data <- installment_data |> select(sk_id_curr, day_dif, amt_dif, paid_ratio, paid_late, missed_payment)
+# positive day dif is early payment, 0 is ontime, negative is late
+```
+
+```{r installment data aggregation}
+#aggregate installment data
+installment_agg <- installment_data |>
+  group_by(sk_id_curr) |>
+  summarise(
+    in_n_installments = n(),
+    in_avg_day_dif = mean(day_dif, na.rm = TRUE),
+    in_min_day_dif = min(day_dif, na.rm = TRUE),
+    in_max_day_dif = max(day_dif, na.rm = TRUE),
+    in_avg_amt_dif = mean(amt_dif, na.rm = TRUE),
+    in_total_amt_dif = sum(amt_dif, na.rm = TRUE),
+    in_avg_paid_ratio = mean(paid_ratio, na.rm = TRUE),
+    in_share_paid_late = mean(paid_late, na.rm = TRUE),
+    in_share_missed_pmt = mean(missed_payment, na.rm = TRUE),
+    in_n_paid_late = sum(paid_late, na.rm = TRUE),
+    in_n_missed_pmt = sum(missed_payment, na.rm = TRUE),
+    .groups = "drop"
+  )
+#removes infinity values
+installment_agg <- installment_agg |> mutate(across(where(is.numeric), ~ ifelse(is.infinite(.x), NA_real_, .x)))
+#replace any remaining NA from aggregation with 0
+installment_agg <- installment_agg |>
+  mutate(across(where(is.numeric), ~ replace_na(.x, 0)))
+```
+
+### Credit Card Data
+
+```{r credit card data}
+#cleanup NAs
+credit_card_data <- credit_card_data |> 
+  mutate(AMT_PAYMENT_CURRENT = ifelse(is.na(AMT_PAYMENT_CURRENT),0,AMT_PAYMENT_CURRENT),
+         AMT_INST_MIN_REGULARITY =ifelse(is.na(AMT_INST_MIN_REGULARITY),0,AMT_INST_MIN_REGULARITY))
+
+# safe_division funciton to avoid Inf/Na when denominator is 0 or NA
+safe_div <- function(num, den) ifelse(is.na(den) | den <= 0, 0, num / den)
+
+#create additional columns
+credit_card_data <- credit_card_data |>
+  mutate(
+    util = safe_div(AMT_BALANCE, AMT_CREDIT_LIMIT_ACTUAL),
+    pay_vs_min = safe_div(AMT_PAYMENT_CURRENT, AMT_INST_MIN_REGULARITY),
+    pay_to_balance = safe_div(AMT_PAYMENT_TOTAL_CURRENT, AMT_BALANCE), 
+    is_delinquent = SK_DPD > 0,                                           
+    paid_min = AMT_INST_MIN_REGULARITY > 0 & AMT_PAYMENT_CURRENT >= AMT_INST_MIN_REGULARITY,
+    paid_full = AMT_BALANCE > 0 & AMT_PAYMENT_TOTAL_CURRENT >= AMT_BALANCE,      
+  )
+# check for any NAs
+#credit_card_data |>
+  #filter(if_any(everything(), is.na))
+```
+
+```{r credit card aggregation}
+# aggregated data set
+credit_card_agg <- credit_card_data |>
+  group_by(SK_ID_CURR) |>
+  summarise(
+    # time covered
+    cc_n_months            = n(),
+    cc_last_month          = max(MONTHS_BALANCE, na.rm = TRUE),
+    cc_span_months         = max(MONTHS_BALANCE, na.rm = TRUE) - 
+                          min(MONTHS_BALANCE, na.rm = TRUE),
+    # balances, limits, utilization
+    cc_avg_balance         = mean(AMT_BALANCE, na.rm = TRUE),
+    cc_max_balance         = max(AMT_BALANCE, na.rm = TRUE),
+    cc_avg_limit           = mean(AMT_CREDIT_LIMIT_ACTUAL, na.rm = TRUE),
+    cc_util_mean           = mean(util, na.rm = TRUE),
+    cc_util_max            = max(util, na.rm = TRUE),
+    # payments vs due
+    cc_pay_vs_min_mean     = mean(pay_vs_min, na.rm = TRUE),
+    cc_pay_to_balance_mean = mean(pay_to_balance, na.rm = TRUE),
+    # delinquency/behavior
+    cc_any_dpd             = any(is_delinquent, na.rm = TRUE),
+    cc_share_dpd           = mean(is_delinquent, na.rm = TRUE),
+    cc_max_dpd             = max(SK_DPD, na.rm = TRUE),
+    cc_share_paid_min      = mean(paid_min, na.rm = TRUE),
+    cc_share_paid_full     = mean(paid_full, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    across(where(is.numeric), ~ ifelse(is.infinite(.x), NA_real_, .x))
+  )
+#forgot to turn to lowercase initially so tidy up
+credit_card_agg <- credit_card_agg |>
+  rename_with(tolower)
+#check for any NA
+#credit_card_agg |>
+  #filter(if_any(everything(), is.na))
+```
+
+### POS Cash Balance
+
+```{r pos cash data}
+#cleanup NAs
+pos_cash_data <- pos_cash_data |> mutate(CNT_INSTALMENT = ifelse(is.na(CNT_INSTALMENT),0,CNT_INSTALMENT),
+                CNT_INSTALMENT_FUTURE = ifelse(is.na(CNT_INSTALMENT_FUTURE),0,CNT_INSTALMENT_FUTURE)
+)
+
+# create additional columns
+pos_cash_data <- pos_cash_data |>
+  mutate(
+    # paid and remaining ratios for installments
+    share_paid = safe_div(CNT_INSTALMENT - CNT_INSTALMENT_FUTURE, CNT_INSTALMENT),
+    share_remaining = safe_div(CNT_INSTALMENT_FUTURE, CNT_INSTALMENT),
+    # deliquencies 
+    is_dpd = SK_DPD > 0
+  )
+```
+
+```{r pos cash data agg}
+#create aggregation
+pos_cash_agg <- pos_cash_data |>
+  group_by(SK_ID_CURR) |>
+  summarise(
+    # duration of months
+    pos_n_months        = n(),
+    pos_last_month      = max(MONTHS_BALANCE, na.rm = TRUE),
+    pos_span_months     = pos_last_month - min(MONTHS_BALANCE, na.rm = TRUE),
+    # term and future ratios
+    pos_term_median     = median(CNT_INSTALMENT, na.rm = TRUE),
+    pos_term_max        = max(CNT_INSTALMENT, na.rm = TRUE),
+    pos_future_median   = median(CNT_INSTALMENT_FUTURE, na.rm = TRUE),
+    pos_future_min      = min(CNT_INSTALMENT_FUTURE, na.rm = TRUE),
+    # repayment progress ratios
+    pos_share_paid_mean = mean(share_paid, na.rm = TRUE),
+    pos_share_rem_mean  = mean(share_remaining, na.rm = TRUE),
+    # delinquency
+    pos_any_dpd         = any(is_dpd, na.rm = TRUE),
+    pos_share_dpd       = mean(is_dpd, na.rm = TRUE),
+    pos_max_dpd         = max(SK_DPD, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  # replace inf
+  mutate(across(where(is.numeric), ~ ifelse(is.infinite(.x), NA_real_, .x)))
+
+#check for any NA
+#pos_cash_agg |>
+  #filter(if_any(everything(), is.na))
+#forgot to turn to lowercase initially so tidy up
+pos_cash_agg <- pos_cash_agg |>
+  rename_with(tolower)
+```
+
+## Application Data Preperation
+
+### Feature Selection Missing Data and NAs
+
+Variables where greater than 50% of values were missing were dropped.
+The one exception was ext_source_1. A good portion of those dropped were
+related to those living in apartments and the characteristics of their
+housing.
+
+83 feature variables are retained.
+
+```{r drop missing data application}
+# % missing per variable (full dataset)
+missing_perc <- colMeans(is.na(hc_train))
+
+# Keep rule: ≤ 50% missing
+cols_to_keep <- names(missing_perc[missing_perc <= 0.50])
+
+# Exception: always keep EXT_SOURCE_1
+cols_final <- unique(c(cols_to_keep, "ext_source_1"))
+
+# Filter dataset
+hc_train <- hc_train |>
+  dplyr::select(all_of(cols_final))
+```
+
+### Outliers
+
+One outlier value has been identified and that is the highest income
+earner listed, this value is removed. Also the days employed uses an
+extreme value for place holding when a person is not employed, so this
+value is changed from 365,243 to 0.
+
+```{r remove outliers}
+#filter to remove incomes more than 100million
+hc_train |> filter(amt_income_total <= 100000000) -> hc_train
+#mutate days employed to 0 for positive values
+hc_train |> mutate(days_employed = ifelse(days_employed > 0,0,days_employed)) -> hc_train
+```
+
+### Joining Data
+
+At this point all five data sets were merged based on the customer id.
+To account for customers who were missing data points, which we would
+expect as we know customers don’t have information in each data set, we
+followed a basic approach for all independent variables. For each column
+a new column was created that was a flag that would indicate if data for
+that variable was missing for a given client, this way information about
+missing data was retained as this in and of itself is likely predictive.
+Next imputation was performed for all missing data points; a median
+value was used for numeric variables and modal values for non-numeric.
+For numeric data they were all scaled and centered, as several different
+modeling approaches explored are sensitive to scale differences. These
+data transformation steps led to a high dimensionality of data, this
+along with numeric scaling make challenges in creating an interpretable
+model, but this trade off was made given that most of the models
+explored in the future will be black box, so interpretability will
+already be lost.
+
+```{r merge data}
+#join data
+hc_merged <- hc_train |> left_join(bureau_agg, by = "sk_id_curr")
+hc_merged <- hc_merged |> left_join(installment_agg, by = "sk_id_curr")
+hc_merged <- hc_merged |> left_join(credit_card_agg, by = "sk_id_curr")
+hc_merged <- hc_merged |> left_join(pos_cash_agg, by = "sk_id_curr")
+```
+
+### Training and Test Partions
+
+Data is split into a 80/20 train/test partition split. The 20% holdout
+data will only be used at the end for evaluating the estimated metrics
+and performance of the chosen model. Which model is used will be
+determined based on cross validation of the 80% training split data.
+
+```{r create partition }
+set.seed(61)
+#create data partition index
+index <- createDataPartition(y = hc_merged$target, p = 0.8, list = FALSE)
+#create split data frames
+train_hc_merged <- hc_merged[index,]
+holdout_hc_merged <- hc_merged[-index,] # do not use at all - only for very last run once model picked
+
+#use data set without home credit or bureau data to identify predictive power
+default_split <- createDataPartition(y = hc_train$target, p = 0.8, list = FALSE)
+#create split data frames
+train_hc_train <- hc_train[default_split,]
+holdout_hc_train <- hc_train[-default_split,]
+
+```
+
+### Missing Data Imputation and Log Scaling
+
+Imputation of missing values and NAs is done last after data is all
+joined and split to avoid leakage. Income is log transformed due to it's
+heavy right skew. Modal values are imputed for categorical, median for
+numeric. Finally numeric data is scaled to account for certain models
+being sensitive to magnitude differences of variables. One additional
+item to note the median and modal values are calculated and retained
+from the training data, so for future predictions on holdout and test
+data these values are used for imputation.
+
+A data cleaning recipe is created that can be used on all test and
+training data. For training data an additional recipe is used that
+creates upsampled and downsampled data set for use. Because in the
+training data is there is a large amount of class imbalance with only
+\~8% of observations belonging to the minority class. For this reason,
+additional data sets were generated that used all the prior
+transformations but as a final step were up and down sampled to have
+more balance. For both we used a 2 to 1 ratio or two cases of majority
+class for each case in minority class.
+
+```{r recipe creation}
+#recipe for data cleaning - to be used on all future data sets
+rec <- recipe(target ~ ., data = train_hc_merged) |>
+  update_role(sk_id_curr, new_role = "id") |> # set so ID doesn't get touched
+  step_zv(all_predictors()) |>                # remove zero variance predictors
+  
+  # Flag NAs before anything else
+  step_indicate_na(all_predictors()) |>
+  
+  # Convert logicals → numeric (0/1) so imputation will handle them
+  step_mutate(across(where(is.logical), as.integer)) |>
+  
+  # Optional: sanitize numeric columns — replace Inf/-Inf/NaN with NA
+  step_mutate(across(where(is.numeric), ~ ifelse(is.finite(.), ., NA_real_))) |>
+  
+  # Impute missing values (now covers numeric + logicals)
+  step_impute_median(all_numeric_predictors()) |>
+  step_impute_mode(all_nominal_predictors()) |>
+  
+  # Safe log transform (no negatives)
+  step_mutate(amt_income_total = log1p(pmax(amt_income_total, 0))) |>
+  
+  # Normalize numeric predictors (except NA indicator flags)
+  step_normalize(all_numeric_predictors(), -starts_with("na_ind_")) |>
+  
+  # Encode categoricals as one-hot
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) |>
+  
+  # Final cleanup of zero variance columns post-dummying
+  step_zv(all_predictors())
+
+# -- recipe for just application train data ---
+#recipe for data cleaning - to be used on all future data sets
+rec_train <- recipe(target ~ ., data = train_hc_train) |>
+  update_role(sk_id_curr, new_role = "id") |> # set so ID doesn't get touched
+  step_zv(all_predictors()) |>                # remove zero variance predictors
+  
+  # Flag NAs before anything else
+  step_indicate_na(all_predictors()) |>
+  
+  # Convert logicals → numeric (0/1) so imputation will handle them
+  step_mutate(across(where(is.logical), as.integer)) |>
+  
+  # Optional: sanitize numeric columns — replace Inf/-Inf/NaN with NA
+  step_mutate(across(where(is.numeric), ~ ifelse(is.finite(.), ., NA_real_))) |>
+  
+  # Impute missing values (now covers numeric + logicals)
+  step_impute_median(all_numeric_predictors()) |>
+  step_impute_mode(all_nominal_predictors()) |>
+  
+  # Safe log transform (no negatives)
+  step_mutate(amt_income_total = log1p(pmax(amt_income_total, 0))) |>
+  
+  # Normalize numeric predictors (except NA indicator flags)
+  step_normalize(all_numeric_predictors(), -starts_with("na_ind_")) |>
+  
+  # Encode categoricals as one-hot
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) |>
+  
+  # Final cleanup of zero variance columns post-dummying
+  step_zv(all_predictors())
+```
+
+**Upsampling techniques evaluated:**
+
+-   **SMOTE -** synthetic minority oversampling - creates synthetic
+    nearest neighbor points (two big weaknesses of high n dimensions and
+    categorical data) - for this reason not used
+-   **Upsample -** randomly oversampling with replacement, most simple
+    and straight forward
+-   **ROSE -** random oversampling examples - creates synthetic data
+    points using kernel density estimation (small item is it can create
+    nonsensical examples, no other cons except computationally intensive
+    and sensitive to tuning) - for this reason not used but could be
+    revisited.
+
+```{r over sample recipe}
+# baseline recipe for no over sampling
+rec_base  <- rec
+#recipe for oversampling - adds oversampling at the end of data prep
+rec_over_sample <- rec |> step_upsample(target, over_ratio = 0.5, skip = TRUE)
+#recipe for downsample 
+rec_down_sample <- rec |>
+  step_downsample(target, under_ratio = 2, skip = TRUE)
+
+# baseline recipe for no over sampling -- train data
+rec_base_train  <- rec_train
+#recipe for oversampling - adds oversampling at the end of data prep
+rec_over_sample_train <- rec_train |> step_upsample(target, over_ratio = 0.5, skip = TRUE)
+#recipe for downsample 
+rec_down_sample_train <- rec_train |>
+  step_downsample(target, under_ratio = 2, skip = TRUE)
+```
+
+```{r apply recipe to data}
+#train recipe on training data split
+prep_base <- prep(rec_base, training = train_hc_merged, verbose = FALSE)
+#prep_over <- prep(rec_over_sample, training = train_hc_merged, verbose = FALSE)
+prep_down <- prep(rec_down_sample, training = train_hc_merged, verbose = FALSE)
+#create data frames
+x_train_base <- juice(prep_base)
+#x_train_over_sample <- juice(prep_over)
+x_train_down_sample <- juice(prep_down)
+
+# -- training data ---
+#train recipe on training data split
+prep_base_train <- prep(rec_base_train, training = train_hc_merged, verbose = FALSE)
+#prep_over_train <- prep(rec_over_sample_train, training = train_hc_merged, verbose = FALSE)
+prep_down_train <- prep(rec_down_sample_train, training = train_hc_merged, verbose = FALSE)
+#create data frames
+x_train_base_train <- juice(prep_base_train)
+#x_train_over_sample_train <- juice(prep_over_train)
+x_train_down_sample_train <- juice(prep_down_train)
+```
+
+# Modeling
+
+## Benchmark Logistic Regression Model
+
+We start with a null logistic regression that includes only an intercept
+(no predictors). This model predicts everyone’s default probability as
+the overall average in the training data. It serves as our baseline to
+compare more complex models. If future models don’t improve accuracy or
+AUC beyond this benchmark, it means the added predictors don’t add real
+value. In addition we trained a logistic regression using both up
+sampled and regular data sets with a few selected variables.
+
+```{r}
+# Logistic Regression Modeling
+
+# Benchmark Model
+# accuracy <- yardstick::accuracy
+# roc_auc <- yardstick::roc_auc
+
+#Benchmark Model-Logistic Regression
+#This is the baseline Benchmark
+# null_model <- glm(target ~ 1, data = x_train_base, family = "binomial")
+# pred_null <- predict(null_model, type = "response")
+
+#Creates a table with the actual labels, predicted probabilities and predicted classes and predicted classes (.pred_class, 1 if ≥ 0.5, else 0).
+# null_tbl <- tibble(
+#   truth = factor(x_train_base$target, levels = c(0, 1)),
+#   .pred = pred_null,
+#   .pred_class = factor(ifelse(pred_null >= 0.5, 1, 0), levels = c(0, 1))
+# )
+
+#Calculate Accuracy and ROC AUC
+# Define the metric set
+# bench_metrics <- metric_set(accuracy, roc_auc)
+# 
+# benchmark_results <- metric_set(accuracy, roc_auc)(null_tbl, truth = truth, estimate = .pred_class, .pred)
+# benchmark_results$model <- "Null (Intercept Only)"
+
+# Logistic Regression Model (Selected Predictors)
+#Predicts the probability that each applicant defaults
+# log_model <- glm(
+#   target ~ amt_income_total + days_employed +
+#     ext_source_1 + ext_source_2 + ext_source_3 +
+#     bur_n_loans + bur_sum_credit_sum +
+#     in_share_paid_late + in_n_missed_pmt +
+#     cc_util_mean + cc_share_dpd + cc_max_dpd +
+#     pos_share_paid_mean + pos_share_dpd + pos_max_dpd,
+#   data = x_train_base,
+#   family = binomial
+# )
+# 
+# pred_log <- predict(log_model, newdata = x_train_base, type = "response")
+# 
+# log_tbl <- tibble(
+#   truth = factor(x_train_base$target, levels = c(0, 1)),
+#   .pred = pred_log,
+#   .pred_class = factor(ifelse(pred_log >= 0.5, 1, 0), levels = c(0, 1))
+# )
+# 
+# log_results <- metric_set(accuracy, roc_auc)(log_tbl, truth = truth, estimate = .pred_class, .pred)
+# log_results$model <- "Logistic Regression (Selected Vars)"
+
+# Logistic Regression Model (Oversampled Data)
+#Same model formula, but now trained on the oversampled data (x_train_over_sample).To handle class imbalance
+# log_over <- glm(
+#   target ~ amt_income_total + days_employed +
+#     ext_source_1 + ext_source_2 + ext_source_3 +
+#     bur_n_loans + bur_sum_credit_sum +
+#     in_share_paid_late + in_n_missed_pmt +
+#     cc_util_mean + cc_share_dpd + cc_max_dpd +
+#     pos_share_paid_mean + pos_share_dpd + pos_max_dpd,
+#   data = x_train_over_sample,
+#   family = binomial
+# )
+# 
+# pred_over <- predict(log_over, newdata = x_train_over_sample, type = "response")
+# 
+# over_tbl <- tibble(
+#   truth = factor(x_train_over_sample$target, levels = c(0, 1)),
+#   .pred = pred_over,
+#   .pred_class = factor(ifelse(pred_over >= 0.5, 1, 0), levels = c(0, 1))
+# )
+# 
+# over_results <- metric_set(accuracy, roc_auc)(over_tbl, truth = truth, estimate = .pred_class, .pred)
+# over_results$model <- "Logistic Regression (Oversampled)"
+# 
+# # Summary Results
+# final_results <- bind_rows(benchmark_results, log_results, over_results) |>
+#   select(model, .metric, .estimate) |>
+#   tidyr::pivot_wider(names_from = .metric, values_from = .estimate) |>
+#   arrange(desc(roc_auc))
+# 
+# print(final_results)
+```
+
+#### Baseline (Null Model)
+
+-   The benchmark model only predicts the overall average default rate
+    (no customer information is used).
+-   It provides a baseline accuracy and AUC of 0.5, representing random
+    guessing.
+-   Purpose: establish a “zero-information” reference to measure
+    improvement from more advanced models.
+
+#### Logistic Regression (Selected Predictors)
+
+-   A standard logistic regression was trained using the key financial
+    and behavioral predictors (income, employment, credit history,
+    payment behavior, and external credit scores).
+-   This model slightly improves over the null baseline by incorporating
+    applicant-level data.
+-   It shows moderate predictive lift, but class imbalance (few
+    defaults) limits its performance.
+
+#### Logistic Regression (Oversampled Data)
+
+-   To address the fact that default cases are rare, we re-trained the
+    logistic model on oversampled data, giving more weight to minority
+    (default) cases.
+-   Oversampling helps the model better identify potential defaulters.
+-   This adjustment improved recall for risky clients without materially
+    hurting overall accuracy.
+-   However, results still show room for improvement in distinguishing
+    high-risk from low-risk borrowers.
+
+Given the number of variables present in our data set, it's impractical
+to try and specify the variables to use, so future modeling will make
+use of techniques that utilize built in feature selection.
+
+## Lasso Regression
+
+```{r, echo = FALSE, warning = FALSE}
+#LASSO using prepped data (x_train_base / baked holdout)
+
+# Build X/y from the juiced training data (no NAs, all numeric)
+#y_tr <- ifelse(x_train_base$target == "1", 1, 0)
+
+# Remove target and any pure ID columns if present
+#X_tr <- x_train_base %>%
+#  select(-target, -any_of(c("sk_id_curr"))) %>%
+#  as.matrix()
+
+#stopifnot(length(y_tr) == nrow(X_tr))
+
+# 3-fold CV to pick lambda by AUC
+#set.seed(123)
+#cv_lasso <- cv.glmnet(
+#  x = X_tr,
+#  y = y_tr,
+#  family = "binomial",
+#  alpha = 1,            # LASSO
+#  nfolds = 3,
+#  type.measure = "auc"  # maximize mean AUC
+#)
+
+#lambda_min <- cv_lasso$lambda.min   # best AUC
+#lambda_1se <- cv_lasso$lambda.1se   # simpler (sparser) within 1 SE
+
+#Fit final model on all training data (choose one)
+#fit_lasso <- glmnet(X_tr, y_tr, family = "binomial", alpha = 1, lambda = lambda_1se)
+
+# Evaluate on your HOLDOUT (bake it with the SAME recipe)
+#x_test_base <- bake(prep_base, new_data = holdout_hc_merged)
+
+#y_te <- ifelse(x_test_base$target == "1", 1, 0)
+#X_te <- x_test_base %>%
+#  select(-target, -any_of(c("sk_id_curr"))) %>%
+#  as.matrix()
+
+#prob_te <- as.numeric(predict(fit_lasso, newx = X_te, type = "response"))
+```
+
+```{r lasso, echo = FALSE, warning = FALSE}
+# See chosen lambdas
+#lambda_min
+#ambda_1se
+
+# See CV AUC results (the built-in plot shows mean AUC per lambda)
+#plot(cv_lasso)
+
+# Print the final LASSO model summary
+#fit_lasso
+
+# Check which predictors were selected (nonzero coefficients)
+#coef(fit_lasso)[coef(fit_lasso) != 0]
+
+# If you want a quick AUC score on your holdout:
+#library(pROC)
+#auc_holdout <- pROC::auc(response = y_te, predictor = prob_te)
+#auc_holdout
+
+# Convert predicted probabilities to class labels using 0.5 threshold
+#pred_class <- ifelse(prob_te >= 0.5, 1, 0)
+
+# Compare predicted vs actual labels
+#conf_matrix <- table(Predicted = pred_class, Actual = y_te)
+#conf_matrix
+
+# Calculate accuracy manually
+#accuracy <- mean(pred_class == y_te)
+#accuracy
+```
+
+### Lasso Model Interpretation
+
+The LASSO logistic regression model represented a significant
+advancement over the baseline and traditional logistic models by
+automatically selecting the most relevant predictors from a large pool
+of financial and behavioral variables. Using cross-validation to
+determine the optimal level of regularization (λ₁se = 0.000547), the
+final model retained 195 meaningful features while avoiding overfitting.
+
+On the holdout dataset, the model achieved an AUC of 0.76, indicating
+strong ability to distinguish between clients likely and unlikely to
+default, and an overall accuracy of 91.9%. The confusion matrix confirms
+that the model correctly identified most non-defaulting applicants
+(56,448 true negatives) while minimizing false alarms (only 89 false
+positives).
+
+Although a smaller number of defaulters were missed (4,862 false
+negatives), the model still captured the majority of high-risk cases
+with 102 true positives. These results demonstrate that the LASSO model
+effectively balances precision and interpretability, providing a robust
+foundation for predicting default risk and supporting more data-driven
+credit decisions.
+
+-   Selected variables: The model retained 195 features, highlighting
+    nuanced patterns in applicant financial history and external credit
+    behavior.
+-   Holdout AUC = 0.76, indicating strong discriminative power — the
+    model correctly ranks defaulters above non-defaulters roughly 76% of
+    the time.
+-   Accuracy = 91.9%, meaning the model correctly predicts outcomes for
+    about 9 out of 10 applicants.
+
+**Confusion Matrix insight:**
+
+-   True negatives (good applicants correctly identified): 56,448
+
+-   False positives (good applicants incorrectly flagged): 89
+
+-   False negatives (missed defaulters): 4,862
+
+-   True positives (defaulters correctly caught): 102
+
+**Key Takeaways** The LASSO model outperforms all previous baselines,
+achieving the best trade-off between accuracy and interpretability. Even
+though defaults are rare, the model successfully identifies most
+high-risk customers, offering actionable insight for credit approval and
+risk monitoring. This model can serve as a production-ready risk scoring
+system, guiding more informed lending decisions while minimizing false
+approvals.
+
+## Neural Network Base Model
+
+```{r nn base model}
+#define hyperparameters
+#nnet_base_spec <-
+#  mlp(epochs = 1000, hidden_units = 32, penalty = 0, learn_rate = 0.001) |>
+#  set_engine("brulee", validation = 0.2, optimizer = "ADAMw", batch_size = 1024, stop_iter = 20, verbose = TRUE) |>
+#  set_mode("classification")
+
+#define workflow
+#nnet_base_wflow <-
+#  rec |>
+#  workflow(nnet_base_spec)
+
+#train model
+#with_device(device = "MPS", {
+#set.seed(123)
+#nnet_base_fit <- fit(nnet_base_wflow, train_hc_merged) })
+
+#nnet_base_fit |>
+#  extract_fit_engine()
+```
+
+```{r nn hyperparam grid search}
+#set.seed(123)
+
+# --- 1) Folds (stratified) ---
+#folds <- vfold_cv(train_hc_merged, v = 5, strata = target)
+
+# --- 2) Model spec with tunables ---
+#mlp_spec_tune <-
+#   mlp(
+#    mode         = "classification",
+#    epochs       = 1000,
+#   hidden_units = tune(),
+#    dropout      = tune(),
+#    penalty      = 0,           # keep 0 based on your earlier results
+#    learn_rate   = tune()
+#  ) |>
+#  set_engine(
+#    "brulee",
+#    optimizer  = "ADAMw",
+#    validation = 0.20,
+#    batch_size = 1024,          # keep fixed here; can try 512 later
+#    stop_iter  = 20,
+#    verbose    = TRUE
+#  )
+
+# --- 3) Workflow ---
+#wf_tune <- workflow() |>
+#  add_recipe(rec) |>
+#  add_model(mlp_spec_tune)
+
+# --- 4) Manual grid (27 combos) ---
+#grid_small <- tidyr::crossing(
+#  hidden_units = c(32L, 64L, 128L),
+#  dropout      = c(0, 0.10, 0.20),
+#  learn_rate   = c(1e-3, 5e-4, 2e-4)
+#)
+
+# --- 5) Grid search (optimize ROC AUC to avoid event-level gotchas) ---
+#tuned <- tune_grid(
+#  wf_tune,
+#  resamples = folds,
+#  grid      = grid_small,
+#  metrics   = metric_set(roc_auc),     # robust/label-agnostic during tuning
+#  control   = control_grid(save_pred = TRUE)
+#)
+
+# Top results
+#tuned %>%
+#  collect_metrics() %>%
+#  arrange(desc(mean)) %>%
+#  slice_head(n = 10)
+
+#best_params <- select_best(tuned, metric = "roc_auc")
+#best_params
+
+# --- 6) Lock in best params and re-run CV to save OOF preds for positive-class metrics ---
+#final_wf <- finalize_workflow(wf_tune, best_params)
+
+#cv_best <- fit_resamples(
+#  final_wf,
+#  resamples = folds,
+#  metrics   = metric_set(roc_auc),
+#  control   = control_resamples(save_pred = TRUE)
+#)
+
+#--- 7) Compute POSITIVE-class metrics from saved OOF predictions ---
+#preds <- collect_predictions(cv_best)
+
+#Rename to avoid NSE issues; ensure levels are c("0","1")
+#preds2 <- preds %>%
+#  transmute(
+#    truth = fct_relevel(target, "0", "1"),
+#    p0    = as.numeric(.pred_0),
+#    p1    = as.numeric(.pred_1)
+#  )
+
+# Positive-class ("1") metrics
+#roc_auc_base     <- roc_auc(   preds2, truth = truth, p1, event_level = "second") %>% pull(.estimate)
+#pr_auc_base      <- pr_auc(    preds2, truth = truth, p1, event_level = "second") %>% pull(.estimate)
+#mn_log_loss_base <- mn_log_loss(preds2, truth = truth, p1, event_level = "second") %>% pull(.estimate)
+
+# # Brier:
+#brier_class_base <- brier_class(preds2, truth = truth, p0) %>% pull(.estimate)
+
+#tibble(
+#  metric = c("ROC_AUC", "PR_AUC", "MN Log Loss", "Brier Class"),
+#  value = c(roc_auc_base, pr_auc_base, mn_log_loss_base, brier_class_base)
+#) |>
+#  knitr::kable(col.names = c("Metric", "Value"), caption = "Base NN Metrics")
+```
+
+### Neural Network Interpretation
+
+A neural network was trained on the data set with the base class
+imbalance and set to optimize hyper parameters using grid search to
+maximize ROC-AUC, the best model had a \~.77 ROC-AUC, but only \~ .24
+PR-AUC. This indicates the model has low precision and is not good at
+predicting positives. This is likely due to the neural network being
+more sensitive in training a model to the class imbalance.
+
+```{r nn model eval}
+# Step 1: Load the saved model
+#nn_model_workflow <- readRDS("models/final_nn_model.rds")
+
+# Step 2: Load kaggle data
+#new_data <- readr::read_csv("data/new_data.csv")
+
+# Step 3: Run predictions
+#predictions <- predict(nn_model_workflow, new_data)
+```
+
+## Random Forest
+
+```{r random forest}
+ #set.seed(123)
+ # specify yardstick functions
+ accuracy  <- yardstick::accuracy
+ roc_auc   <- yardstick::roc_auc
+ pr_auc    <- yardstick::pr_auc
+ sens      <- yardstick::sens
+ spec      <- yardstick::spec
+ precision <- yardstick::precision
+ recall    <- yardstick::recall
+ f_meas    <- yardstick::f_meas
+
+#  #use already down_sampled data set
+#  #factor target for assurance & remove id column so it's not predicted on
+rf_down_sample <- x_train_down_sample |>
+   select(-sk_id_curr) |>
+  mutate(target = factor(target))
+
+ #random forest algo
+ #default_rf_model <- rand_forest(
+     #tuning through grid search
+ #    mtry = 20, #standard sqrt num columns
+ #    trees = 200,
+ #    min_n = 20) |>
+ #    set_mode("classification") |>
+ #    set_engine("ranger", num.threads = 1, importance = "impurity")
+
+ #5 fold cross validation
+ #default_folds <- vfold_cv(rf_down_sample, v=5, strata = target)
+
+ #workflow
+ #default_wf <- workflow() |>
+ #              add_model(default_rf_model) |>
+ #              add_formula(target ~.)
+ 
+ #defining metrics
+metrics_set <- metric_set(roc_auc, pr_auc, accuracy, sens, spec, precision, recall, f_meas, brier_class)
+
+# fit once across folds (no tuning) & evaluate
+#rf_cv <- fit_resamples(
+ #  default_wf,
+ #  resamples = default_folds,
+ #  metrics = metrics_set,
+ #  control = control_resamples(save_pred = TRUE)
+ #)
+
+#collect_metrics(rf_cv)
+
+#confusion metrics
+#cf_matrix <- rf_cv |>
+#   collect_predictions() |>
+#   conf_mat(truth = target, estimate = .pred_class)
+
+#cf_matrix
+```
+
+### Random Forest Interpretation
+
+Conducting a random forest showed a good performance in predicting
+applicants who default versus those that won't default. The model
+achieved accuracy of .72 and a approximately a \~.85 PR-AUC, indicating
+strong ability to identify applicants that are at risk of default. It
+had a ROC-AUC of \~.75. Other performance metrics to note: The recall is
+\~.93, this model catches 93% of the defaulters. Specificity is .322,
+indicating many good applicants were flagged as potential defaulters.
+The chosen hyperparameters were manually set as baseline parameters.
+Conducting a grid search tuning caused major delays in computational
+time. To speed up the process manual selection was done. With manual
+adjustments, there were marginal differences in performance metrics and
+still yielded good performance metrics.
+
+**Confusion Matrix insight:**
+
+-   True negatives (good applicants correctly identified): 36,847
+
+-   False positives (good applicants incorrectly flagged): 2,873
+
+-   False negatives (missed defaulters): 13,467
+
+-   True positives (defaulters correctly caught): 6,393
+
+Under class imbalance, the random forest model is good at detecting the
+default risk of applicants. While the recall and specificity were at
+good levels, the concern is how many false negatives there are in the
+model output. These are individuals that could be costly to the business
+because they are predicted to not default but end up defaulting. This
+leaves room for improvement in identifying non-risky borrowers.
+
+## Gradiant Boosting
+
+```{r gradient boosting}
+ set.seed(123)
+
+ #use previous down samples from RF model without id & rename
+ boosted_down_sample <- rf_down_sample
+
+ #boosted algo - tuning
+ gbm_spec <- boost_tree(
+   mtry        = 20,     # feature subsampling (maps to colsample_bytree)
+   trees       = 300,    # keep close to RF’s 200; 300 is still light
+   min_n       = 20,     # leaf min weight
+   learn_rate  = 0.08,   # modest eta so 300 trees can learn enough
+   tree_depth  = 20,
+   sample_size = 0.8
+ ) |>
+   set_mode("classification") |>
+   set_engine(
+     "xgboost",
+     nthread     = 4,
+     eval_metric = "auc",
+     tree_method = "hist",     # huge speedup at 200k rows
+     grow_policy = "lossguide"
+   )
+
+
+ #workflow
+ gbm_wf <- workflow() |>
+     add_model(gbm_spec) |>
+     add_formula(target ~ .)
+
+ gbm_folds <- vfold_cv(boosted_down_sample, v=5, strata = target)
+
+ #use same metrics set from RF model
+ #metrics_set
+
+ #fit model with folds
+ gbm_cv <- gbm_wf |>
+   fit_resamples(
+     resamples = gbm_folds,
+     metrics   = metrics_set,
+     control   = control_resamples(save_pred = TRUE)
+   )
+
+ #collect metrics
+ transaction_metrics <- gbm_cv |>
+                        collect_metrics()
+transaction_metrics
+
+ #confusion matrix
+ gbm_cfmatrix <- gbm_cv |>
+    collect_predictions() |>
+    conf_mat(truth = target, estimate = .pred_class)
+
+ gbm_cfmatrix
+
+ #fit final model for holdout cv data
+ gbm_final <- gbm_wf |> fit(data = boosted_down_sample)
+```
+
+
+### Gradiant Boosting Interpretation
+
+The gradient boosted model yielded decent performance. Hyperparameter
+changes yielded marginal if any differences in performance metrics. We
+decided to start with mirroring the hyperparameters as random forest and
+found performance metrics were comparable and reasonable. Tuning
+hyperparameters across all parameters yielded marginal changes as
+previously stated. Therefore, the chosen hyperparmeters were in
+comparison to the random forest model. The accuracy had a minor increase
+in accuracy \~.74, PR-AUC of \~.86 and ROC-AUC of \~.76. There was a
+decrease in recall, recall dropped from .93 to .87. Specificity
+increased to \~.47.
+
+### Gradient Boosting on Application Train Data Only
+
+```{r xgb application train data}
+#recipe for application down sample
+rf_down_sample_train <- x_train_down_sample_train |>
+   select(-sk_id_curr) |>
+  mutate(target = factor(target))
+
+#workflow
+ gbm_wf <- workflow() |>
+     add_model(gbm_spec) |>
+     add_formula(target ~ .)
+
+ gbm_folds_train <- vfold_cv(rf_down_sample_train, v=5, strata = target)
+
+ #use same metrics set from RF model
+ #metrics_set
+
+ #fit model with folds
+ gbm_cv_train <- gbm_wf |>
+   fit_resamples(
+     resamples = gbm_folds_train,
+     metrics   = metrics_set,
+     control   = control_resamples(save_pred = TRUE)
+   )
+
+ #collect metrics
+ application_metrics <- gbm_cv_train |>
+                       collect_metrics()
+application_metrics
+
+ #confusion matrix
+ gbm_cfmatrix_train <- gbm_cv_train |>
+    collect_predictions() |>
+    conf_mat(truth = target, estimate = .pred_class)
+
+ gbm_cfmatrix_train
+
+ #fit final model for holdout cv data
+ gbm_final_train <- gbm_wf |> fit(data = rf_down_sample_train)
+
+```
+
+### Ablation Table
+
+Conducting an ablation table to view the difference between the model
+run on the data set with transactional data veruss the model run without
+the transactional data and only application data.
+
+```{r ablation table}
+#build ablation table for xgboost models
+#define models
+model_xgb <- c("transactional_xgb", "application_xgb")
+
+#extract roc_auc
+transaction_roc <- transaction_metrics |>
+                filter(.metric == "roc_auc") |>
+                pull(mean)
+application_roc <- application_metrics |>
+                filter(.metric == "roc_auc") |>
+                pull(mean)
+
+
+#extract brier score
+transactional_brier <- transaction_metrics |>
+                filter(.metric == "brier_class") |>
+                pull(mean)
+application_brier <- application_metrics |>
+                filter(.metric == "brier_class") |>
+                pull(mean)
+
+#combining metrics
+roc_xgb <- c(transaction_roc, application_roc)
+brier_xgb <- c(transactional_brier, application_brier)
+
+#ablation table
+ablation_xgb <- tibble(
+  model = model_xgb,
+  roc = round(roc_xgb, 3),
+  brier_score = round(brier_xgb, 3),
+  roc_delta = round(roc_xgb - transaction_roc, 3),
+  brier_delta = round(brier_xgb - transactional_brier, 3)
+)
+ablation_xgb
+```
+
+The ablation table provides insight into the contribution of the
+transaction data to predictive performance. When our best model was
+trained using only the application data, its performance declined, as
+reflected by a lower ROC-AUC and a higher Brier score. In contrast, the
+model that included both application and transaction data achieved a
+higher ROC-AUC and a lower Brier score. This demonstrates that the
+transaction data adds meaningful predictive signal and improves overall
+model performance.
+
+### Feature Importance -- Best Model
+
+```{r feature importance}
+library(workflows)
+library(xgboost)
+
+#pull the trained xgboost booster from your final workflow fit
+xgb_booster <- extract_fit_parsnip(gbm_final)$fit  # xgb.Booster
+
+#get the column names actually used during training (matches the formula blueprint/dummies used by workflows)
+mold <- workflows::extract_mold(gbm_final)
+feature_names <- colnames(mold$predictors)
+
+#compute feature importance (Gain/Cover/Frequency)
+imp <- xgboost::xgb.importance(feature_names = feature_names, model = xgb_booster)
+
+#view and tidy
+imp_tbl <- as_tibble(imp) |> 
+          arrange(desc(Gain))
+
+options(scipen = 999) #remove scientific notation
+print(imp_tbl, n = 30)
+
+#plot top 30 gain
+xgboost::xgb.plot.importance(imp, top_n = 30, measure = "Gain")
+
+```
+
+**Feature Importance**
+
+Gain: How much the feature improves model accuracy (i.e., average
+reduction in loss when it’s used in a split)
+
+Cover: The fraction of samples affected by splits involving that feature
+(how frequently it impacts examples)
+
+Frequency: The fraction of all splits that used the feature (how often
+the model used it structurally)
+
+5 Highest Gain Features:
+
+-   ext_source_2: Accounts for 7.7% of the total improvement in loss
+    across all splits. The strongest predictor.
+
+-   ext_source_3: Accounts for 6.4%, similar predictive strength.
+
+-   days_birth: Accounts for 2.5% , smaller predictive contribution.
+
+-   days_employed: Accounts for 2.3%, similar predictive contribution as
+    days_birth.
+
+-   bur_max_days_credit: Accounts for 2.2%, similar predictive
+    contributions as days_birth and days_employed.
+
+The top two, ext_source_2/3 are the most powerful predictors of default risk. To recall, these variables are the normalized creditworthiness scores from external data sources. The transaction data provides complementary insights that further enhance model accuracy. 
+
+**Confusion Matrix insight:**
+
+-   True negatives (good applicants correctly identified): 34,571
+
+-   False positives (good applicants incorrectly flagged): 5,149
+
+-   False negatives (missed defaulters): 10,570
+
+-   True positives (defaulters correctly caught): 9,290
+
+The gradient boosted model yielded similar results from the random
+forest model, with minor increases in accuracy and PR-AUC. The amount of
+false negatives, applicants predicted to not default but actually
+defaulted decreased from 13,467 in the random forest model to 10,570.
+The number of true positives increased from 6,393 in the random forest
+to 9,290. The number of false positives increased and the number of true
+negatives decreased. This is reflected in the recall performance metric.
+This model missed more true defaulters than the random forest model. It
+sacrificed some positive predictions to catch fewer false negatives. The
+random forest model might be preferable than gradient boosting if the
+goal is to identify more risky borrowers.
+
+## Ensemble Model
+
+```{r ensemble}
+#set.seed(61)
+#rename target for model - downsampled data - then take 10% at random so model can be fit quickly
+#x_train_down_sample2 <- x_train_down_sample |> mutate(target = factor(target, levels = c(0,1),
+#                                                        labels = c("Class0", "Class1"))) |> slice_sample(prop = .1)
+
+#create ensemble control
+#ensemble_ctrl <- trainControl(
+#  method = "cv", number = 3,
+#  classProbs = TRUE,
+#  summaryFunction = twoClassSummary,
+#  savePredictions = "final",
+#  allowParallel = TRUE,
+#  verboseIter = TRUE)
+
+#train model
+#ensemble_list <- caretList(
+#  target ~ ., data = x_train_down_sample2,
+#  trControl = ensemble_ctrl,
+#  metric = "ROC",
+#  tuneList = list(
+    #based on prior model params
+#    xgbTree = caretModelSpec(
+#      method = "xgbTree",
+#      tuneGrid = expand.grid(
+#        nrounds = c(300),
+#       max_depth = c(20),
+#        eta = c(0.08),
+#        gamma = 0,
+#        colsample_bytree = 0.8,
+#        min_child_weight = 1,
+#        subsample = 0.8)),
+    #based on prior optimal nn hyper params, to slow so had to tune down size massively
+#    nnet = caretModelSpec(
+#      method = "nnet",
+#      trace = FALSE,
+#      preProcess = c("center", "scale"),
+#      tuneGrid = expand.grid(
+#        size = c(12),
+#        decay = c(2e-4)),
+#        MaxNWts = 100000,
+#        maxit  = 200)))
+```
+
+```{r train regression on ensemble}
+#train regression on model stack
+#stack_glm <- caretStack(
+#  ensemble_list,
+#  method = "glm",
+#  family = binomial(),
+#  metric = "ROC",
+#  trControl = ensemble_ctrl)
+
+
+# cv performance
+# when did on regular data didn't do well predicting, class imbalance killed it
+#trying on downsampled
+#resamples(ensemble_list) |> summary()
+```
+
+```{r performance metrics of ensemble}
+#pred_df has: obs (factor) and class-prob columns per level
+#pos <- levels(pred_df$obs)[1]                 # your existing choice of positive class
+#df  <- tibble(truth = pred_df$obs,
+#              .pred_pos = pred_df[[pos]])     # numeric probs for positive class
+
+# Compute ROC-AUC and PR-AUC
+#roc_res <- yardstick::roc_auc(df, truth, .pred_pos, event_level = "first")
+#pr_res  <- yardstick::pr_auc(df,  truth, .pred_pos, event_level = "first")
+
+#results <- bind_rows(roc_res, pr_res) %>%
+#  select(.metric, .estimate)
+
+#results
+```
+
+## Ensemble Interpretation
+
+An ensemble model was trained that fit both a neural net and gradient
+boosting model, then a regression was fit to try and combine the
+insights from the models. This model continually had issues when trying
+to mirror hyperparameters of the other models, to accommodate this cross
+validation size was reduced to three and the down sampled data was
+reduced by 90% at random. Even with this the hyper parameters from the
+other models had to be turned down (specifically on the neural net
+size). With this the ROC_AUC was \~.75 and PR_AUC was \~.84, this model
+became greatly limited by processing power and failed to make
+improvements on the base versions of either gradient or neural network.
+
+
+# Chosen Model- Gradient Boosting
+
+```{r chosen model}
+# load test
+hc_test <- read.csv(here::here("data", "application_test.csv"), stringsAsFactors = TRUE) |>
+  rename_with(tolower) |>
+  mutate(
+    across(starts_with("flag"),as.factor),
+    across(starts_with("reg_"),as.factor),
+    across(starts_with("live_"),as.factor)
+  )
+
+# join test with aggregates
+final_merged <- hc_test |> 
+  left_join(bureau_agg,    by = "sk_id_curr") |>
+  left_join(installment_agg, by = "sk_id_curr") |>
+  left_join(credit_card_agg, by = "sk_id_curr") |>
+  left_join(pos_cash_agg,    by = "sk_id_curr")
+
+# bake test using training prep
+final_base <- bake(prep_base, new_data = final_merged)
+```
+
+```{r predictions of chosen model}
+# Predict probabilities for class "1" on the TEST set (no labels)
+final_prob <- predict(gbm_final, final_base, type = "prob") |>
+  dplyr::pull(.pred_1)
+
+# Build Kaggle submission
+submission <- tibble(
+  SK_ID_CURR = final_base$sk_id_curr,
+  TARGET     = final_prob
+)
+
+readr::write_csv(submission, "submission.csv")
+```
+
+```{r expected performance metrics on holdout set}
+# Set probability threshold for classifying defaults
+t_star <- 0.5
+
+# Ensure target variable is a factor with "1" as the positive class
+holdout_hc_merged <- holdout_hc_merged |>
+  dplyr::mutate(target = forcats::fct_relevel(as.factor(target), "0","1"))
+
+# Apply the same preprocessing for training
+holdout_base <- bake(prep_base, new_data = holdout_hc_merged)
+
+# Predict probabilities of default (class "1") on the holdout data
+hold_prob <- predict(gbm_final, holdout_base, type = "prob") |>
+  dplyr::pull(.pred_1)
+
+# Combine true labels, predicted probabilities, and predicted classes
+hold_tbl <- tibble::tibble(
+  truth       = forcats::fct_relevel(as.factor(holdout_base$target), "0","1"),
+  .pred_1     = hold_prob,
+  .pred_class = factor(ifelse(hold_prob >= t_star, "1","0"), levels = c("0","1"))
+)
+
+# Define set of threshold-based classification metrics
+metrics_cls <- yardstick::metric_set(
+  yardstick::accuracy, yardstick::precision, yardstick::recall,
+  yardstick::spec, yardstick::f_meas
+)
+
+# Calculate accuracy, precision, recall, specificity, and F1-score
+class_res <- metrics_cls(hold_tbl, truth = truth, estimate = .pred_class)
+
+# Calculate ROC-AUC and PR-AUC using predicted probabilities
+roc_res <- yardstick::roc_auc(hold_tbl, truth = truth, .pred_1, event_level = "second")
+pr_res  <- yardstick::pr_auc (hold_tbl, truth = truth, .pred_1, event_level = "second")
+
+# Combine and display all metrics in one table
+metrics_all <- dplyr::bind_rows(class_res, roc_res, pr_res) |>
+  dplyr::select(.metric, .estimate) |>
+  dplyr::arrange(dplyr::desc(dplyr::if_else(.metric %in% c("roc_auc","pr_auc"), .estimate, -Inf)))
+
+metrics_all
+
+# Display confusion matrix at the chosen threshold
+yardstick::conf_mat(hold_tbl, truth = truth, estimate = .pred_class)
+```
+
+Calculating the performance metrics on the holdout set, we decided to
+use a default probability threshold of 0.5. Using the predicted class
+.pred_1' column, we defined the target variable for each individual. If
+an individual had a predicted probability greater than 0.5, they were
+classified as high default risk, while those below 0.5 were classified
+as non-default risk. We then calculated the totals for true positives,
+true negatives, false positives, and false negatives to obtain the main
+performance metrics.
+
+In addition, we evaluated the model’s discrimination ability using
+ROC-AUC and PR-AUC on the holdout data. The model achieved an accuracy
+of approximately 0.84 and a ROC-AUC of about 0.77, indicating strong
+overall predictive power. The PR-AUC of 0.26 further shows the model
+performs meaningfully better than random guessing when identifying
+defaulters in this imbalanced dataset. These results suggest the
+gradient boosting model provides a reliable balance between detecting
+true defaulters and minimizing false alarms.
+
+# Platt Scaling & Model Calibration
+
+```{r platt scaling and model calibration}
+# library(probably)
+# gbm_hold_preds <- predict(gbm_final, holdout_base, type = "prob") |>
+#   mutate(truth = holdout_base$target)
+# 
+# gbm_cal_logit <- cal_estimate_logistic(
+#   gbm_hold_preds,
+#   truth = truth,
+#   estimate = c(.pred_0, .pred_1), 
+#   smooth = FALSE
+# )
+# 
+# gbm_preds_cal <- cal_apply(gbm_hold_preds, gbm_cal_logit)
+# 
+# cal_plot_logistic(
+#   gbm_preds_cal,
+#   truth    = truth,
+#   estimate = .pred_1,
+#   event_level = "second"
+# ) + ggtitle("Logistic Calibration Curve for XGBoost (Platt-scaled)")
+```
+
+## Synthetic Cost Table Analysis
+
+```{r cost table analysis}
+# --- Business/economic assumptions (edit as needed) -------------------------
+# loss_per_default <- 20000   # expected loss when an approved client defaults
+# profit_per_good  <- 3000    # net profit from an approved, non-defaulting client
+# 
+# # Candidate decision thresholds on P(default)
+# thresholds <- seq(0.10, 0.7, by = 0.05)
+# 
+# #utilizing platt-scaled predictions 
+# df_cost <- tibble(
+#   truth = gbm_preds_cal$truth,
+#   p_default = gbm_preds_cal$.pred_1
+# )
+# 
+# #Function: one row of economics per threshold
+# cost_row <- function(t) {
+#   # Approve loans with predicted default probability below t
+#   approve <- df_cost$p_default < t
+# 
+#   approve_rate <- mean(approve)
+# 
+#   # Expected counts per 1,000 applicants
+#   approvals_1000 <- 1000 * approve_rate
+#   defaults_approved_1000 <- 1000 * mean(approve & df_cost$truth == "1")
+#   good_approved_1000     <- 1000 * mean(approve & df_cost$truth == "0")
+# 
+#   # Economics per 1,000 applicants
+#   expected_loss_1000   <- defaults_approved_1000 * loss_per_default
+#   expected_profit_1000 <- good_approved_1000 * profit_per_good
+#   net_value_1000       <- expected_profit_1000 - expected_loss_1000
+# 
+#   tibble(
+#     p_default_threshold        = t,
+#     approvals_per_1000         = round(approvals_1000, 1),
+#     defaults_approved_per_1000 = round(defaults_approved_1000, 1),
+#     good_approved_per_1000     = round(good_approved_1000, 1),
+#     expected_loss_1000         = round(expected_loss_1000, 0),
+#     expected_profit_1000       = round(expected_profit_1000, 0),
+#     net_value_1000             = round(net_value_1000, 0)
+#   )
+# }
+# 
+# #Build cost table across thresholds
+# xgb_cost_table <- thresholds |>
+#   purrr::map_dfr(cost_row) |>
+#   arrange(p_default_threshold)
+# 
+# best_threshold_row <- xgb_cost_table |>
+#   arrange(desc(net_value_1000))
+# 
+# best_threshold_row
+```
+
+## Hypothetical Scenerio
+
+```{r hypothetical scenerio}
+set.seed(123)
+#get std dev and means
+mu_birth    <- mean(train_hc_merged$days_birth,       na.rm = TRUE) 
+mu_birth# ~ -16032
+sd_birth    <- sd(train_hc_merged$days_birth,         na.rm = TRUE)
+sd_birth
+
+mu_income   <- mean(train_hc_merged$amt_income_total, na.rm = TRUE)
+mu_income# ~ 168371
+sd_income   <- sd(train_hc_merged$amt_income_total,   na.rm = TRUE)
+sd_income
+
+mu_children <- mean(train_hc_merged$cnt_children,     na.rm = TRUE)  
+mu_children# ~ 0.41
+sd_children <- sd(train_hc_merged$cnt_children,       na.rm = TRUE)
+sd_children
+
+mu_credit   <- mean(train_hc_merged$amt_credit,       na.rm = TRUE)
+mu_credit# ~ 599043
+sd_credit   <- sd(train_hc_merged$amt_credit,         na.rm = TRUE)
+sd_credit
+
+mu_employed <- mean(train_hc_merged$days_employed,    na.rm = TRUE)
+mu_employed# ~ -1955
+sd_employed <- sd(train_hc_merged$days_employed,      na.rm = TRUE)
+sd_employed
+
+#derek's raw values (convert years → negative days)
+derek_days_birth    <- -45 * 365     # -16425
+derek_days_employed <- -20 * 365     # -7300
+derek_income        <- 90000
+derek_children      <- 1
+derek_credit        <- 300000
+derek_realty_Y <- 1 #he owns a home
+derek_own_car_Y <-  0 #does not own his vehicle
+derek_gender_M <- 1 #male
+
+#standardization using z-score scaling
+derek_days_birth_z    <- (derek_days_birth    - mu_birth)    / sd_birth
+derek_income_z        <- (derek_income        - mu_income)   / sd_income
+derek_children_z      <- (derek_children      - mu_children) / sd_children
+derek_credit_z        <- (derek_credit        - mu_credit)   / sd_credit
+derek_days_employed_z <- (derek_days_employed - mu_employed) / sd_employed
+
+derek_values <- list(
+  days_birth       = derek_days_birth_z,
+  amt_income_total = derek_income_z,
+  cnt_children     = derek_children_z,
+  amt_credit       = derek_credit_z,
+  days_employed    = derek_days_employed_z,
+  code_gender_M    = 1,
+  code_gender_F    = 0
+)
+
+#create template from already standardized training data
+template <- boosted_down_sample %>%
+  sample_n(1) %>%
+  select(-target)
+
+#overwrite derek's personalized values
+derek_std <- template %>%
+  mutate(across(names(derek_values), ~ derek_values[[cur_column()]]))
+
+# raw probabilities for derek from the xgboost model
+derek_raw <- predict(gbm_final, derek_std, type = "prob") |>
+  mutate(truth = factor(NA, levels = levels(holdout_base$target)))
+  # `truth` is just a placeholder so the columns match
+
+#apply platt scaling
+derek_cal <- cal_apply(derek_raw, gbm_cal_logit) |>
+  rename(
+    No  = .pred_0,
+    Yes = .pred_1
+  )
+derek_cal
+```
+
+Creating a hypothetical scenerio gives us insight on the models capability to predict new value inputs. Using a randomly selected data observation in the training data, we plugged in our hypothetical applicant Derek's demographics into the sampled row. The only information we had on Derek were his age, gender, income, credit loan amount, children, income, and days employed. The other variables remained the same assuming the other 167 variables apply to Derek. We had to standardize the values of Derek's attributes to match the down sampled data the model was trained on. Then found the prediction of default. Using the Platt scale calibration, we got a prediction of default of .1 and no default of .89. Derek is a safe applicant and is not considered high risk. 
+
+## Performance Metrics
+
+## Kaggle Score
+
+Our final Gradient Boosting (XGBoost) model achieved consistent and
+competitive performance on Kaggle:
+
+-   Public AUC: 0.7597
+
+-   Private AUC: 0.7669
+
+These scores closely match our internal holdout ROC-AUC of 0.77,
+confirming that the model generalizes well and was not overfit to the
+training data. The small gap between public and private leaderboard
+results indicates stable performance across unseen applicants,
+reinforcing confidence in the model’s reliability for production
+deployment.
+
+# Results
+
+## Model Assessment
+
+**Overview** We evaluated four model families: Logistic Regression
+(including LASSO), Neural Network, Random Forest, and Gradient Boosting
+(XGBoost) , using a consistent training pipeline and a strictly held-out
+validation set. We also submitted results to Kaggle to confirm external
+performance. Holdout and Kaggle results were consistent, supporting the
+final model choice.
+
+**Benchmark**
+
+**Baseline** The benchmark (null) model predicts the overall average
+default rate without using any customer level information. It achieved
+an accuracy and ROC-AUC of 0.50, representing random guessing. This
+serves as a baseline reference to measure improvement from more advanced
+models.
+
+**Logistic Regression (Selected Predictors)** A standard logistic
+regression was trained using key financial and behavioral predictors,
+including income, employment, credit history, payment behavior, and
+external credit scores. This model slightly improved upon the null
+benchmark, achieving a ROC-AUC of 0.65 and accuracy of 0.88. However,
+due to the class imbalance (only \~8% of clients default), it favored
+predicting the majority non-default class, resulting in lower recall for
+true defaulters.
+
+**Logistic Regression (Oversampled Data)** To address the imbalance, the
+model was retrained on oversampled data, increasing representation of
+default cases. Performance improved with a ROC-AUC of 0.68, accuracy of
+0.86, and recall of 0.74. This version identified more high-risk
+borrowers but at the cost of slightly lower precision, creating more
+false positives.
+
+**Logistic Regression (LASSO)**
+
+-   **Purpose:** Strong baseline with embedded feature selection and
+    interpretability.
+-   **Holdout results**:
+    -   ROC-AUC of 0.76 with about 92% accuracy (threshold = 0.5)
+    -   The model produced few false positives but missed several true
+        defaulters, which is common when the data are imbalanced and the
+        decision threshold is not adjusted.
+
+**Interpretation:** The LASSO model effectively ranks default risk,
+performs similarly to tree-based models, and remains transparent through
+interpretable coefficients.
+
+**Neural Network**
+
+-   **Holdout Results:** ROC-AUC ≈ 0.77, PR-AUC ≈ 0.24
+
+**Interpretation:** The neural network showed comparable ranking power
+to Gradient Boosting but lower precision, meaning it was less effective
+at identifying true defaulters at workable thresholds. t also required
+significant computation and careful tuning to manage class imbalance,
+making it less practical for this dataset.
+
+**Random Forest** - Cross-Validated Results:
+
+-   ROC-AUC: 0.75
+-   PR-AUC: 0.85
+-   Accuracy: 0.72
+-   Recall: 0.93
+-   Specificity: 0.32
+
+**Interpretation:** Random Forest achieved excellent recall, catching
+most defaulters but low specificity, meaning it flagged many good
+applicants as risky. While its PR-AUC was strong, this model’s high
+false-positive rate would drive up unnecessary manual reviews or
+rejections.
+
+**Gradient Boosting (XGBoost)**
+
+**Why it won:** radient Boosting achieved the best overall balance
+between ranking power and threshold performance, both on the holdout
+data and on Kaggle.
+
+-   Holdout Results:
+
+    -   ROC-AUC: 0.77
+    -   PR-AUC: 0.26
+    -   Accuracy: 0.84
+    -   Precision: 0.95
+    -   Recall: 0.87
+    -   Specificity: 0.48
+    -   F1 Score: 0.91
+
+**Business Interpretation:**
+
+-   High precision (0.95): Most applicants flagged as high-risk truly
+    are, minimizing unnecessary declines.
+-   Strong recall (0.87): Captures the majority of defaulters, reducing
+    credit losses.
+-   Improved specificity (0.48): Preserves more low-risk approvals
+    compared to Random Forest.
+-   Solid PR-AUC (0.26): Demonstrates meaningful lift over random
+    guessing in a heavily imbalanced dataset (\~8% default rate).
+
+**Kaggle Validation:**
+
+-   Public AUC: 0.7597
+-   Private AUC: 0.7669 These results closely match the holdout ROC-AUC
+    (0.77), confirming consistency and minimizing overfitting risk.
+
+**Operational Guidance:**
+
+-   Default threshold (0.50): Balanced trade-off between precision and
+    recall.
+-   Threshold tuning: Raise the threshold to reduce false positives, or
+    lower it to capture more defaulters depending on business
+    priorities.
+-   Calibration: Future work may include Platt or Isotonic scaling to
+    better align probabilities with actual portfolio default rates.
+
+**Why Gradient Boosting Outperformed Other Models?**
+
+The Gradient Boosting model outperformed all other approaches by
+delivering the best overall balance of accuracy, precision, and recall,
+while maintaining operational efficiency. Compared to LASSO, it achieved
+a similar ROC-AUC (0.77 vs. 0.76) but offered stronger recall (0.87) and
+precision (0.95) by capturing complex, non-linear relationships that
+linear models could not. Against the Neural Network, Gradient Boosting
+produced nearly identical ranking performance but proved more stable,
+faster to train, and easier to deploy at scale. Relative to the Random
+Forest, it preserved high recall while improving specificity (0.48 vs.
+0.32)—reducing false alarms and lowering manual review costs. This
+balance makes Gradient Boosting the most business-viable model,
+minimizing credit losses without unnecessarily restricting lending.
+
+To ensure sustainable performance, monthly model monitoring will track
+AUC, precision, recall, and portfolio calibration. Threshold reviews
+will occur quarterly with Risk Management to adjust for changes in
+business conditions or loss tolerance. A Champion/Challenger framework
+will be maintained, with LASSO and Random Forest models serving as
+benchmarks for performance validation. For transparency, SHAP feature
+importance from Gradient Boosting and LASSO coefficients will be
+documented for internal audit and regulatory purposes. Finally, the same
+data preprocessing pipeline—including imputation, encoding, and
+scaling—will be consistently applied in production to prevent data drift
+and maintain prediction integrity.
+
+## Group Members & Contributions
+
+-   Corinn Childs — Random Forest and XGBoost modeling, render cleaning
+
+-   Gaby Rodriguez — Logistic Regression, LASSO, holdout evaluation, and
+    summary write-up.
+
+-   Joel Jorgensen — Data cleaning, diagnostics, metric tables, recipe
+    pipeline, and Kaggle submissions.
+
+-   Josh McAlister — Neural Network tuning and ensemble (stacking)
+    scaffold.
