@@ -38,6 +38,7 @@ previous loans disbursed, and previous applicants for Home Credit loans. The mod
 be implemented into Home Credit’s application system and used on future applicants.
 
 **Findings**
+
 All findings reported are from my own work from this group project.
 
 <u>*Random Forest:*</u>
