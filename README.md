@@ -2,7 +2,9 @@
 IS6812 Practice Project - Home Credit Model
 
 Home Credit Default Risk
-Business Problem:
+
+--Business Problem:
+
 Home Credit aims to predict their applicants repayment abilities on loans awarded to the
 applicant. They service applicants that struggle to get loans due to the applicants lack of or
 nonexistent credit history. Home Credit specialists help these applicants receive loans and
@@ -12,7 +14,9 @@ profitability and client acquisition and retention. Home Credit must be able to 
 approve applicants that are more capable of loan repayment who otherwise would be rejected.
 And secondly, avoid awarding loans to applicants who have a higher risk of default to ensure no
 loss of profit.
-Benefit of a solution:
+
+--Benefit of a solution:
+
 Home Credit will benefit from a solution by increasing client retention and acquisition. Their
 revenue will also increase due to increased business partnerships with loan providers and
 increased client retention and acquisition. This project will also help identify applicants who are
@@ -22,7 +26,9 @@ The project will be a success if the probability of default increases of Home Cr
 metrics and use those metrics to determine the return on investment and identify increases in
 profitability. Achieving this will be an indicator of model success in determining applicants default
 risk.
-Analytics Approach:
+
+--Analytics Approach:
+
 The proposed approach will predict which applicants are most likely and least likely to default on
 their loan. We will use a supervised analytic approach, specifically a classification model that
 utilizes the clients historical data of previous transactional history and credit history. The data
@@ -31,7 +37,9 @@ balances of previous credits, monthly balance of previous point of sales and cas
 applicant had with Home Credit, monthly balance of previous credit cards, repayment history for
 previous loans disbursed, and previous applicants for Home Credit loans. The model will then
 be implemented into Home Credit’s application system and used on future applicants.
-Scope:
+
+--Scope:
+
 The deliverable for this project will be the probability metrics of applicants most and least likely
 to default on their loan. The applicants who are least likely to default on their loan will be offered
 assistance in meeting with a financial advisor or loan specialist to discuss loan and financial
@@ -41,7 +49,9 @@ advisor or loan specialist to determine where the client can make improvements i
 standing so the applicant can reapply for future loans. Using applicants income, employment
 status, age, or any other demographic details will not be used and is out of scope for this
 project.
-Details:
+
+--Details:
+
 The data science team at The University of Utah MSBA program will be the team working on
 this project. The time frame for completion on this project will be 10 weeks. We will meet in 5
 weeks to discuss initial results and provide any feedback for revisions. Important project
