@@ -116,6 +116,8 @@ sampled data the model was trained on. Then found the prediction of default.
 Using the Platt scale calibration, we got a prediction of default of .1 and no 
 default of .89. Derek is a safe applicant and is not considered high risk. 
 
+<img src="is6812/Tables/Derek Predictions.png" width="350">
+
 # Data Source
 
 The dataset used in this project is from Kaggle:
