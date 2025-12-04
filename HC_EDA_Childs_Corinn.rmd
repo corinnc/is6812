@@ -1,0 +1,537 @@
+---
+title: "HC_EDA_Childs_Corinn"
+author: "Corinn Childs"
+date: "2025-09-29"
+output: 
+  html_document: 
+    toc: true
+---
+
+# Home Credit Risk
+
+### Business Problem:
+
+Home Credit aims to predict their applicants repayment abilities on loans awarded to the applicant. They service applicants that struggle to get loans due to the applicants lack of or nonexistent credit history. Home Credit specialists help these applicants receive loans and financial services by using a variety of data from the applicants transaction history. HomeCredit needs to accurately monitor and predict applicants repayment capability to ensure profitability and client acquisition and retention. Home Credit must be able to successfully approve applicants that are more capable of loan repayment who otherwise would be rejected. And secondly, avoid awarding loans to applicants who have a higher risk of default to ensure no loss of profit.
+
+## Load Data
+
+```{r load data and libraries}
+#libraries
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(skimr)
+library(janitor)
+library(knitr)
+library(kableExtra) #using to make ai prediction table readable in quarto
+
+#load data
+hc_train <- read.csv("application_train.csv", stringsAsFactors = TRUE)
+
+```
+
+## Inspecting Data
+
+```{r inspection}
+#inspection
+#str(hc_train)
+
+summary(hc_train)
+
+#counting unique observations in the dataset
+num_observations_train <- nrow(hc_train)
+print(num_observations_train) #307511
+
+#cleaning variable names for simplicity
+hc_train <- hc_train |>
+                  clean_names()
+
+```
+
+> There are 307,511 values in the training data set. Some variables that stood out:
+>
+> -   children: max 19, avg .41 (can't have .41 of a person) min 0
+>
+> -   amt_income: max \$117,000,000, avg \$168,798, min \$25,650, median \$147,150 – This variable could skew data because the heavy outlier
+>
+> -   amt_credit: credit amount of the loan – max \$4,050,000, avg \$599,026, min \$45,000, median \$513,531 – potentially skewed.
+>
+> -   amt_annuity: how much the loan is paid out per year/month – max \$258,026, avg \$27109, min \$1,616, median \$24903; 12 NA's
+>
+> -   goods price: same as credit amount – 278 NA's
+>
+> -   days since birth: max age 69, avg 44, min age 20.5, median 43, pretty evenly distributed - adjusted for years
+>
+> -   days employed: 365243 values – Believed to be a placeholder, days since application would be negative.
+>
+> -   car_age: 202,299 NA values -- potentially an unimportant variable
+>
+> -   ext_source_1: normalized score from external information – 173,378 NA's , need further EDA
+>
+> -   ext_source_2: 660 NA's – why is it so low? need further EDA
+>
+> -   ext_source_3: 60,975 NA's – need further EDA
+
+# EDA
+
+Explore the target variable in application\_{train\|test}.csv.
+
+### Target Variable EDA & Accuracy
+
+Target variable: 1 - client with payment difficulties: he/she had late payment more than X days on at least one of the first Y installments of the loan in our sample; 0 - all other cases
+
+```{r target variable}
+#target variable in train dataset - target distribution
+#view(hc_train) #has the target variable
+
+#frequency table
+freq_table <- table(hc_train$target)
+print(freq_table)
+
+#proportions
+props <- prop.table(freq_table)
+print(props)
+
+```
+
+> The target variable distribution has 0 all other cases with a proportion of .919 and 1 - client has difficulty with repayment, with a .08 proportion. The target variable is unbalanced, there is a heavier proportion of clients that have other cases (able for repayment, neutral etc) and don't have problem with repayment than do have problem with repayment. The accuracy in a majority class classifier would be \~92%, it would always predict 0 - all other cases.
+
+# My EDA version:
+
+Explore the relationship between target and predictors, looking for potentially strong predictors that could be included later in a model
+
+## Plots
+
+```{r plots}
+
+#box plot of basic demographics/variables
+
+#occupation_type
+occ_type <- hc_train |>
+     ggplot(mapping = aes(x = occupation_type)) +
+     geom_bar() +
+     labs(title = "Bar plot occupation type") +
+     theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+occ_type
+
+#name_education_type
+ed_type <- hc_train |>
+     ggplot(mapping = aes(x = name_education_type)) +
+     geom_bar() +
+     labs(title = "Bar plot education type") +
+     theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+ed_type
+
+#cnt_children
+children_plot <- hc_train |>
+     ggplot(mapping = aes(x = cnt_children)) +
+     geom_bar() +
+     labs(title = "Bar plot of children count") 
+children_plot
+
+#cnt_children on target
+children_target <- hc_train |>
+     mutate(target = factor(target)) |>
+     ggplot(mapping = aes(x = cnt_children)) +
+     geom_histogram() +
+     facet_wrap(facets = ~target) +
+     labs(title = "Histogram of children count by target")
+children_target
+
+#days since birth
+age_plot <- hc_train |>
+    mutate(target = factor(target)) |>
+     ggplot(mapping = aes(x = target, y = days_birth)) +
+     geom_boxplot() +
+     labs(title = "Boxplot of target vs. days since birth")
+age_plot 
+
+#amt_income_total
+income_plot <- hc_train |>
+    filter(amt_income_total < 1000000) |>
+     ggplot(mapping = aes(x = name_education_type, y = amt_income_total)) +
+     geom_boxplot() +
+     labs(title = "Boxplot of Education Type vs. Income")
+income_plot
+
+#name_housing_type
+housing_type <- hc_train |>
+     ggplot(mapping = aes(x = name_housing_type)) +
+     geom_bar() +
+     labs(title = "Bar plot housing type count") 
+housing_type
+
+#own reality flag
+own_reality <- hc_train |>
+     mutate(flag_own_realty = factor(flag_own_realty),
+               target = factor(target)) |>
+     ggplot(mapping = aes(x = target)) +
+     geom_bar() +
+     facet_wrap(facets = ~flag_own_realty) +
+     labs(title = "Bar plot of Owns Reality by Target") 
+own_reality
+
+#housing type on if they own reality
+house_type_reality <- hc_train |>
+     mutate(flag_own_realty = factor(flag_own_realty)) |>
+     ggplot(mapping = aes(x = name_housing_type)) +
+     geom_bar() +
+     facet_wrap(facets = ~flag_own_realty) +
+     labs(title = "Bar plot of Owns Reality by Housing Type") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+house_type_reality
+
+
+#ext_source_2 
+ext2_plot <- hc_train |>
+     mutate(target = factor(target)) |>
+     ggplot(mapping = aes(x = ext_source_2)) +
+     geom_histogram() +
+     facet_wrap(facets = ~target) +
+     labs(title = "Histogram of  external risk score by Target")
+ext2_plot
+
+#def_60_cnt_social_circle -- looking at social circle defaults
+def60_social <- hc_train |>
+     mutate(target = factor(target)) |>
+     ggplot(mapping = aes(x = def_60_cnt_social_circle)) +
+     geom_histogram() +
+     facet_wrap(facets = ~target) +
+     labs(title = "Histogram of Social circle default past 60 days on Target")
+def60_social 
+
+#code_gender
+gender_plot <- hc_train |>
+     mutate(code_gender = factor(code_gender),
+               target = factor(target)) |>
+     ggplot(mapping = aes(x = target)) +
+     geom_bar() +
+     facet_wrap(facets = ~code_gender) +
+     labs(title = "Bar plot of Gender by Target")
+gender_plot
+ 
+
+#looking at gender counts for just flagged high risk
+gender_high_risk <- hc_train |>
+     mutate(code_gender = factor(code_gender),
+               target = factor(target)) |>
+    filter(target == 1) |>
+     ggplot(mapping = aes(x = target)) +
+     geom_bar() +
+     facet_wrap(facets = ~code_gender) +
+     labs(title = "Bar plot of Gender by Target = 1")
+gender_high_risk
+
+#name_income_type on target
+income_type <- hc_train |>
+     mutate(target = factor(target)) |>
+     ggplot(mapping = aes(x = name_income_type)) +
+     geom_bar() +
+     facet_wrap(facets = ~target) +
+     labs(title = "Bar plot of Income type by Target") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+income_type
+
+#family status by gender and Target
+family_status_gender <- hc_train |>
+     mutate(code_gender = factor(code_gender),
+            target = factor(target)) |>
+    # filter(TARGET == 1) |>
+     ggplot(mapping = aes(x = name_family_status, fill = code_gender)) +
+     geom_bar() +
+     facet_wrap(facets = ~target) +
+     labs(title = "Bar plot of Family Status by Gender and Target") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+family_status_gender
+
+#inquiry
+enq_year <- hc_train |>
+     mutate(target = factor(target)) |>
+     ggplot(mapping = aes(x = amt_req_credit_bureau_year)) +
+     geom_bar() +
+     facet_wrap(facets = ~target) +
+     labs(title = "Bar plot of enquires in the past year by target")
+enq_year
+
+#region_rating_client
+hc_train |>
+     mutate(target = factor(target)) |>
+     ggplot(mapping = aes(x = region_rating_client)) +
+     geom_bar() +
+     facet_wrap(facets = ~target) +
+     labs(title = "Bar plot of region rating by target")
+```
+
+-   Occupation_type: There are more applicants that have an unspecified jobs, second highest are laborers
+
+-   Name_education_type: There are more secondary school individuals in the data set
+
+-   Cnt_children: Most applicants applying for loans don't have kids. However more people don't have kids who are flagged 0 - all other cases (aren't high risk). More people flagged as high risk don't have kids.
+
+-   Days_birth: Median age is younger for those who are flagged as high risk (difficult repayment)
+
+-   Amt_income_total: Filtered on income less than \$1,000,000 so the plots were not skewed and can see visible outputs.
+
+-   Name_housing_type: Most applicants are home owners or apartment owners.
+
+-   Owns_reality : More people own reality aren't flagged as high risk (target 0) – More people own their home/apartment than don't own it -- could these be rented apartments/housing? or the individual just lives under the roof of someone who owns the house they themselves don't.
+
+-   Ext_source_2: This variable has less NA values than the other external sources. Very little applicants flagged as high risk have an external risk score. Those not flagged as high risk are left skewed, more applicants have higher external score that are not flagged high risk.
+
+-   Def_60_cnt_social_circle: 200,000 people who aren't flagged high risk had 0 observations of social circle defaulting in loans. Those who aren't flagged high risk have a higher count of observations in their social surroundings not defaulting within 60 days.
+
+-   Code_gender: More female applicants than male, more female flagged as non high risk. There are more males flagged as non high risk than flagged high risk. There are more females flagged high risk than males.
+
+-   Income_type: There are more working applicants in both target outcomes, potentially W2 employees. They have job stability and steady income so they have more ability to pay their loans back.
+
+-   Family_status: There are more married females not flagged high risk than males, and there are more married females classified as high risk than males.
+
+-   Amt_req_credit_bureau_year: Looking inquiry counts by target variable to show how many inquiries in a year could classify someone has high risk or not. More applicants filed 0 inquires to credit bureaus and flagged as not high risk. Compared to those that are flagged as high risk, almost the same amount of applicants inquires at least once as people who did not inquire in a year at all.
+
+-   region_rating_client: Most applicants have rating 2 in both target variables – would need more clarification on rating meanings.
+
+## Data Cleaning with skimr and janitor packages
+
+```{r data cleaning and summary}
+#view data counts per variable - arrange by highest missing values
+
+colSums(is.na(hc_train))
+
+#show duplicate rows
+dup_train <- hc_train |>
+  get_dupes()
+#no duplicates
+
+#dropping high missing value housing characteristic variables
+hc_train_new <- hc_train[ , -c(45:86)]
+
+#removing total area of apartment and car age
+hc_train_new <- hc_train_new |> 
+                select(-c(own_car_age, totalarea_mode))
+
+#viewing max income applicant, the income is skewing the income, is it an outlier? or intentional
+max_income <- hc_train_new |>
+      filter(amt_income_total == max(amt_income_total))
+#works as a laborer, business entity -- making $117,000,000 -- not labeled a business owner, only been working for 3 years
+
+#removing from analysis
+hc_train_new <- hc_train_new[hc_train_new$amt_income_total != max(hc_train_new$amt_income_total), ]
+
+max_employment <- hc_train_new |>
+      filter(days_employed == max(days_employed))
+#365243 is a place holder, 55k rows with this number, going to replace with NA
+hc_train_new <- hc_train_new |>
+  mutate(days_employed = na_if(days_employed, 365243))
+
+#removing flag document variables
+hc_train_new <- hc_train_new |>
+  select(-matches("flag_document|wallsmaterial|housetype_mode|fondk|emergency"))
+
+#summary(hc_train_new)
+
+#tried to switch NA values for occupation_type and organization_type to "Unspecified" but was not working as intended
+
+```
+
+> There are a lot of apartment living variables have more missing values. The variable house/apartment are classifying both types of housing together when they are different types of homes. Because there's so many NA values for these variables, my recommendation is to remove them from the data set. I looked at the highest income earner to look at other variables this applicant was classified under. Based on the other variables, gender, job, income type, organization type, I felt this might have been an input error so I removed it from the data set. It was skewing the data making it hard to get a good read on the income variable in plots. I decided to replace 365243 value in days employed to NA, that way it does not skew data for further analysis. I also decided to remove the "flag_document" columns because they are just an identifier if they provided the proper documentation or not.
+
+## Adding Transactional Data
+
+```{r transactional data}
+#eliminating scientific notation for readability
+options(scipen = 999)
+
+#load bureau data
+bureau_data <- read.csv("bureau.csv", stringsAsFactors = TRUE)
+
+#view(bureau_data)
+
+#cleaning variable names for simplicity
+bureau_data <- bureau_data |>
+                  clean_names()
+
+#make the sk_id_curr not in scientific notation
+hc_train_new$sk_id_curr <- as.character(hc_train_new$sk_id_curr)
+bureau_data$sk_id_curr <- as.character(bureau_data$sk_id_curr)
+
+#aggregating the bureau data by sk_id_curr
+num_agg <- bureau_data %>%
+  group_by(sk_id_curr) %>%
+  summarise(
+    n_bureau_loans          = n(),
+    most_recent_days_credit = max(days_credit, na.rm = TRUE),
+    oldest_days_credit      = min(days_credit, na.rm = TRUE),
+    last_update_days        = max(days_credit_update, na.rm = TRUE),
+    total_credit_sum        = sum(amt_credit_sum, na.rm = TRUE),
+    total_credit_debt       = sum(amt_credit_sum_debt, na.rm = TRUE),
+    total_credit_overdue    = sum(amt_credit_sum_overdue, na.rm = TRUE),
+    total_credit_limit      = sum(amt_credit_sum_limit, na.rm = TRUE),
+    total_prolongs          = sum(cnt_credit_prolong, na.rm = TRUE),
+    avg_credit_sum          = mean(amt_credit_sum, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    debt_to_credit = round(if_else(total_credit_sum > 0, total_credit_debt / total_credit_sum, 0) , 3)
+  )
+
+#view(num_agg)
+
+#joining application data on bureau data
+hc_bureau <- hc_train_new |>
+  left_join(num_agg, by = "sk_id_curr")
+
+#view(hc_bureau)
+```
+
+## Inspecting Joined Data & Cleaning
+
+```{r joined data inspection}
+#summary(hc_bureau)
+#44020 NA values for bureau data, -- 44020 applicants without previous credit history
+
+#removing bureau id
+hc_bureau <- hc_bureau |>
+  select(-matches("sk_id_bureau"))
+
+#min number of loans
+min(hc_bureau$n_bureau_loans, na.rm = TRUE)
+
+#look at people who have NA loan amounts - no credit history
+na_loans <- hc_bureau |>
+              filter(is.na(n_bureau_loans))
+
+
+#look at those who have had credit enquires in the past year
+no_loans_enq60 <- hc_bureau |>
+                     filter(is.na(n_bureau_loans),
+                      amt_req_credit_bureau_year >= 0)
+
+count_enq60_na <- hc_train_new |>
+                  filter(is.na(amt_req_credit_bureau_year)) |>
+                   nrow() #41519
+
+#look at applicants with NA days employed
+#hc_bureau |>
+    #filter(is.na(days_employed))
+  
+#look at those with NA values for social surroundings
+social_default <- hc_bureau |>
+                  filter(is.na(obs_30_cnt_social_circle))
+
+# replace NA with 0
+hc_bureau <- hc_bureau |>
+  mutate(
+    n_bureau_loans = coalesce(n_bureau_loans, 0),
+    most_recent_days_credit = coalesce(most_recent_days_credit, 0),
+    oldest_days_credit = coalesce(oldest_days_credit, 0),
+    last_update_days = coalesce(last_update_days, 0),
+    total_credit_sum = coalesce(total_credit_sum, 0),
+    total_credit_debt = coalesce(total_credit_debt, 0),
+    total_credit_overdue = coalesce(total_credit_overdue, 0),
+    total_credit_limit = coalesce(total_credit_limit, 0),
+    total_prolongs = coalesce(total_prolongs, 0),
+    avg_credit_sum = coalesce(avg_credit_sum, 0),
+    debt_to_credit = coalesce(debt_to_credit, 0),
+    amt_req_credit_bureau_hour = coalesce(amt_req_credit_bureau_hour, 0),
+    amt_req_credit_bureau_day = coalesce(amt_req_credit_bureau_day, 0),
+    amt_req_credit_bureau_week = coalesce(amt_req_credit_bureau_week, 0),
+    amt_req_credit_bureau_mon = coalesce(amt_req_credit_bureau_mon, 0),
+    amt_req_credit_bureau_qrt = coalesce(amt_req_credit_bureau_qrt, 0),
+    amt_req_credit_bureau_year = coalesce(amt_req_credit_bureau_year, 0),
+    ext_source_1 = coalesce(ext_source_1, 0),
+    ext_source_2 = coalesce(ext_source_2, 0),
+    ext_source_3 = coalesce(ext_source_3, 0),
+    days_employed = coalesce(days_employed, 0)
+  )
+
+#summary(hc_bureau)
+#colnames(hc_bureau)
+```
+
+> Joining the bureau data on the training data, there are 44,020 NA values for bureau data, this is 44,020 applicants without previous credit history. The minimum loan amount is 1. Filtering by people who do not have previous credit history, there are 2,501 where they did make inquires to credit bureaus in the past year. It's fair assumption for applicants with NA values in number of bureau loans to have a value of 0 because they have had 0 loans. 41,519 applicants did not inquire to credit bureaus in the past year. This matches the amount of NA values within the amt_req_credit_bureau_year variable in the training data set. Making all NA values for bureau and inquiry variables 0 because if they did not have credit history then their loan amount is 0. If they did not make any inquires for all time periods then they made 0 inquires across the board. Days employed having NA values are all applicants who's income is their pension, therefore they are retired. I decided to make this variable 0 for NA values because they no longer work. This might skew results, but adjustments can be made if so. Variables I did not get a strong indication of imputing are the social surrounding variables.
+
+## Plots -- No Credit History Applicants
+
+```{r plots training bureau data}
+#view(hc_bureau)
+#hc_bureau
+
+#those with 0 loans -- zero credit history on target
+zero_loans <- hc_bureau |>
+    filter(n_bureau_loans == 0)
+
+zero_loan_freq <- table(zero_loans$target)
+print(zero_loan_freq)
+
+#proportions
+zero_loan_prop <- prop.table(zero_loan_freq)
+print(zero_loan_prop)
+  
+#plotting the relationship of those flagged at risk
+
+#income on the target variable
+zero_loans |>
+     mutate(target = factor(target)) |>
+     ggplot(mapping = aes(x = target, y = amt_income_total)) +
+     geom_boxplot() +
+     labs(title = "Boxplot of income vs. target")
+
+summary(zero_loans$amt_income_total[zero_loans$target == 0])
+
+#total_credit_debt on target
+summary(hc_bureau$total_credit_debt)
+
+hc_bureau |>
+    filter(target == 1) |>
+     mutate(target = factor(target)) |>
+     ggplot(mapping = aes(x = n_bureau_loans)) +
+     geom_bar() +
+      facet_wrap(facets = ~target)
+     labs(title = "Bar plot of number of loans for target == 1")
+#majority of applicants have had 0 loans flagged as difficult repayment
+     
+#debt_to_credit
+hc_bureau |>
+    filter(debt_to_credit > -50) |>
+     mutate(target = factor(target)) |>
+     ggplot(mapping = aes(x = target, y = debt_to_credit)) +
+     geom_boxplot() +
+     labs(title = "Box plot of debt to credit ratio on target")
+#the debt to credit ratio is center around 0 for both target groups
+
+#hc_bureau |>
+    #filter(debt_to_credit == max(debt_to_credit))
+```
+
+> Approximately 10% of the applicants with no prior credit history are flagged as difficulty of repayment, while 90% of the applicants were flagged as all other cases. The income is still heavily skewed. Looking at the total credit debt of the applicants, there is negative credit which can indicate over payments, reimbursements. The debt to credit ratio is centered around 0. The applicant with the highest debt to income ratio is not flagged as high risk. There could be other variables that indicate this applicant can pay back the loans.
+
+# AI EDA
+
+AI EDA version: Prompt: "I have attached a document of the data dictionary, the descriptions of each column. Act as if you are credit risk analyst and identify the top 15-20 predictors you believe would be the most predictive of the target variable, TARGET, based on the meaning of the variables." Attached "HomeCredit_columns_description.csv"
+
+```{r ai prompt}
+#load csv of ai's suggested top predictors with reasoning
+ai_predictors <- read.csv("combined_predictors_with_reasoning.csv")
+ai_predictors |>
+  kable("html", caption = "AI-Generated Predictor Variables with Reasoning") |>
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+#view(ai_predictors)
+
+```
+
+## AI Critique
+
+> The predicted variables that AI generated were very similar to my predicted variables in detecting the target variable. I found some definitions of variables very vague and AI was able to effectively capture the variables definition and use them as predicted variables. There are obvious demographic variables included as well as bureau based variables that I did not think of incorporating into my list of predictive variables. I used AI to help style the comparison table as well to make it clean and readable.
+
+# Questions
+
+List of questions I had along the way through EDA, listed here:
+
+-   How come ext_course_2 had more imputed values than the other external source variables?
+
+-   Empty values for occupation – tried to adjust for these in categorize them as "Unspecified" but found difficulty adjusting this value with it being a factor variable.
+
+-   Noticed that housing and apartment are classified together. There is a rented apartment category in the housing type variable, but found there are some applicants that do not own their house or apartment so they should be categorized differently.
+
+-   region_rating_client: what is the rating meanings?
