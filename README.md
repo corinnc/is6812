@@ -39,7 +39,8 @@ be implemented into Home Credit’s application system and used on future applic
 
 **Findings**
 
--- Random Forest:
+*Random Forest:*
+
 Conducting a random forest showed a good performance in predicting
 applicants who default versus those that won't default. The model
 achieved accuracy of .72 and a approximately a \~.85 PR-AUC, indicating
@@ -53,7 +54,8 @@ time. To speed up the process manual selection was done. With manual
 adjustments, there were marginal differences in performance metrics and
 still yielded good performance metrics.
 
--- Gradiant Boosted Model:
+*Gradiant Boosted Model:*
+
 The gradient boosted model yielded better performance. Hyperparameter
 changes yielded marginal if any differences in performance metrics. We
 decided to mirror the hyperparameters as random forest and
@@ -65,7 +67,8 @@ in accuracy \~.74, PR-AUC of \~.86 and ROC-AUC of \~.76. There was a
 decrease in recall, recall dropped from .93 to .87. Specificity
 increased to \~.47.
 
--- Ablation Table:
+*Ablation Table:*
+
 The ablation table provides insight into the contribution of the
 transaction data to predictive performance. When our best model was
 trained using only the application data, its performance declined, as
@@ -77,7 +80,8 @@ model performance.
 
 ![ablationtable_features](https://github.com/user-attachments/assets/71562841-c4a3-4cbd-b6a4-545403e119a2)
 
--- Feature Importance:
+*Feature Importance:*
+
 Gain: How much the feature improves model accuracy (i.e., average
 reduction in loss when it’s used in a split)
 Cover: The fraction of samples affected by splits involving that feature
@@ -101,7 +105,8 @@ insights that further enhance model accuracy.
 <img src="https://github.com/user-attachments/assets/f5c81613-39ab-4da9-9a21-a5f755a24341" width="450">
 
 
--- Hypothetical Scenario:
+*Hypothetical Scenario:*
+
 Creating a hypothetical scenerio gives us insight on the models capability 
 to predict new value inputs. Using a randomly selected data observation in 
 the training data, we plugged in our hypothetical applicant Derek's 
