@@ -95,3 +95,23 @@ The top two, ext_source_2/3 are the most powerful predictors of default risk.
 To recall, these variables are the normalized creditworthiness scores
 from external data sources. The transaction data provides complementary
 insights that further enhance model accuracy. 
+
+-- Hypothetical Scenario:
+Creating a hypothetical scenerio gives us insight on the models capability 
+to predict new value inputs. Using a randomly selected data observation in 
+the training data, we plugged in our hypothetical applicant Derek's 
+demographics into the sampled row. The only information we had on Derek were:
+- 45-year-old
+- male
+- he has one child
+- earns $90K per year
+- owns his home
+- does not own a car
+- and has 20 years of employment history
+- requesting a $300K loan
+  
+The other variables remained the same assuming the other 167 variables apply to 
+Derek. We had to standardize the values of Derek's attributes to match the down
+sampled data the model was trained on. Then found the prediction of default. 
+Using the Platt scale calibration, we got a prediction of default of .1 and no 
+default of .89. Derek is a safe applicant and is not considered high risk. 
