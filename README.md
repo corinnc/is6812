@@ -39,7 +39,7 @@ be implemented into Home Credit’s application system and used on future applic
 
 **Findings**
 
-*Random Forest:*
+<u>*Random Forest:*</u>
 
 Conducting a random forest showed a good performance in predicting
 applicants who default versus those that won't default. The model
@@ -54,7 +54,7 @@ time. To speed up the process manual selection was done. With manual
 adjustments, there were marginal differences in performance metrics and
 still yielded good performance metrics.
 
-*Gradiant Boosted Model:*
+<u>*Gradiant Boosted Model:*</u>
 
 The gradient boosted model yielded better performance. Hyperparameter
 changes yielded marginal if any differences in performance metrics. We
@@ -67,7 +67,7 @@ in accuracy \~.74, PR-AUC of \~.86 and ROC-AUC of \~.76. There was a
 decrease in recall, recall dropped from .93 to .87. Specificity
 increased to \~.47.
 
-*Ablation Table:*
+<u>*Ablation Table:*</u>
 
 The ablation table provides insight into the contribution of the
 transaction data to predictive performance. When our best model was
@@ -80,7 +80,7 @@ model performance.
 
 ![ablationtable_features](https://github.com/user-attachments/assets/71562841-c4a3-4cbd-b6a4-545403e119a2)
 
-*Feature Importance:*
+<u>*Feature Importance:*</u>
 
 Gain: How much the feature improves model accuracy (i.e., average
 reduction in loss when it’s used in a split)
@@ -105,7 +105,7 @@ insights that further enhance model accuracy.
 <img src="https://github.com/user-attachments/assets/f5c81613-39ab-4da9-9a21-a5f755a24341" width="450">
 
 
-*Hypothetical Scenario:*
+<u>*Hypothetical Scenario:*</u>
 
 Creating a hypothetical scenerio gives us insight on the models capability 
 to predict new value inputs. Using a randomly selected data observation in 
