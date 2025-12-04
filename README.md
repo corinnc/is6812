@@ -98,7 +98,7 @@ To recall, these variables are the normalized creditworthiness scores
 from external data sources. The transaction data provides complementary
 insights that further enhance model accuracy.
 
-![feature importance](https://github.com/user-attachments/assets/f5c81613-39ab-4da9-9a21-a5f755a24341)
+<img src="https://github.com/user-attachments/assets/f5c81613-39ab-4da9-9a21-a5f755a24341" width="450">
 
 
 -- Hypothetical Scenario:
