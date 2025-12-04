@@ -1,9 +1,8 @@
 # is6812
-IS6812 Practice Project - Home Credit Model
 
-Home Credit Default Risk
+## Home Credit Default Risk
 
---Business Problem:
+**Business Problem**
 
 Home Credit aims to predict their applicants repayment abilities on loans awarded to the
 applicant. They service applicants that struggle to get loans due to the applicants lack of or
@@ -15,7 +14,7 @@ approve applicants that are more capable of loan repayment who otherwise would b
 And secondly, avoid awarding loans to applicants who have a higher risk of default to ensure no
 loss of profit.
 
---Benefit of a solution:
+**Benefit of a solution**
 
 Home Credit will benefit from a solution by increasing client retention and acquisition. Their
 revenue will also increase due to increased business partnerships with loan providers and
@@ -27,7 +26,7 @@ metrics and use those metrics to determine the return on investment and identify
 profitability. Achieving this will be an indicator of model success in determining applicants default
 risk.
 
---Analytics Approach:
+**Analytics Approach**
 
 The proposed approach will predict which applicants are most likely and least likely to default on
 their loan. We will use a supervised analytic approach, specifically a classification model that
@@ -38,22 +37,61 @@ applicant had with Home Credit, monthly balance of previous credit cards, repaym
 previous loans disbursed, and previous applicants for Home Credit loans. The model will then
 be implemented into Home Credit’s application system and used on future applicants.
 
---Scope:
+**Findings**
 
-The deliverable for this project will be the probability metrics of applicants most and least likely
-to default on their loan. The applicants who are least likely to default on their loan will be offered
-assistance in meeting with a financial advisor or loan specialist to discuss loan and financial
-service options to help these individuals feel empowered in their repayment journey. Those that
-are predicted to default on their loan will still receive assistance by meeting with a financial
-advisor or loan specialist to determine where the client can make improvements in their credit
-standing so the applicant can reapply for future loans. Using applicants income, employment
-status, age, or any other demographic details will not be used and is out of scope for this
-project.
+-- Random Forest:
+Conducting a random forest showed a good performance in predicting
+applicants who default versus those that won't default. The model
+achieved accuracy of .72 and a approximately a \~.85 PR-AUC, indicating
+strong ability to identify applicants that are at risk of default. It
+had a ROC-AUC of \~.75. Other performance metrics to note: The recall is
+\~.93, this model catches 93% of the defaulters. Specificity is .322,
+indicating many good applicants were flagged as potential defaulters.
+The chosen hyperparameters were manually set as baseline parameters.
+Conducting a grid search tuning caused major delays in computational
+time. To speed up the process manual selection was done. With manual
+adjustments, there were marginal differences in performance metrics and
+still yielded good performance metrics.
 
---Details:
+-- Gradiant Boosted Model:
+The gradient boosted model yielded better performance. Hyperparameter
+changes yielded marginal if any differences in performance metrics. We
+decided to mirror the hyperparameters as random forest and
+found performance metrics were comparable and reasonable. Tuning
+hyperparameters across all parameters yielded marginal changes as
+previously stated. Therefore, the chosen hyperparmeters were in
+comparison to the random forest model. The accuracy had a minor increase
+in accuracy \~.74, PR-AUC of \~.86 and ROC-AUC of \~.76. There was a
+decrease in recall, recall dropped from .93 to .87. Specificity
+increased to \~.47.
 
-The data science team at The University of Utah MSBA program will be the team working on
-this project. The time frame for completion on this project will be 10 weeks. We will meet in 5
-weeks to discuss initial results and provide any feedback for revisions. Important project
-milestones are: Business Problem Statement, Exploratory Data Analysis, Modeling,
-Presentation Draft, and Final Presentation to showcase our findings.
+-- Ablation Table:
+The ablation table provides insight into the contribution of the
+transaction data to predictive performance. When our best model was
+trained using only the application data, its performance declined, as
+reflected by a lower ROC-AUC and a higher Brier score. In contrast, the
+model that included both application and transaction data achieved a
+higher ROC-AUC and a lower Brier score. This demonstrates that the
+transaction data adds meaningful predictive signal and improves overall
+model performance.
+
+-- Feature Importance:
+Gain: How much the feature improves model accuracy (i.e., average
+reduction in loss when it’s used in a split)
+Cover: The fraction of samples affected by splits involving that feature
+(how frequently it impacts examples)
+Frequency: The fraction of all splits that used the feature (how often
+the model used it structurally)
+5 Highest Gain Features:
+-   ext_source_2: Accounts for 7.7% of the total improvement in loss
+    across all splits. The strongest predictor.
+-   ext_source_3: Accounts for 6.4%, similar predictive strength.
+-   days_birth: Accounts for 2.5% , smaller predictive contribution.
+-   days_employed: Accounts for 2.3%, similar predictive contribution as
+    days_birth.
+-   bur_max_days_credit: Accounts for 2.2%, similar predictive
+    contributions as days_birth and days_employed.
+The top two, ext_source_2/3 are the most powerful predictors of default risk.
+To recall, these variables are the normalized creditworthiness scores
+from external data sources. The transaction data provides complementary
+insights that further enhance model accuracy. 
