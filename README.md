@@ -115,3 +115,16 @@ Derek. We had to standardize the values of Derek's attributes to match the down
 sampled data the model was trained on. Then found the prediction of default. 
 Using the Platt scale calibration, we got a prediction of default of .1 and no 
 default of .89. Derek is a safe applicant and is not considered high risk. 
+
+# Data Source
+
+The dataset used in this project is from Kaggle:
+
+**Home Credit Default Risk**  
+https://www.kaggle.com/competitions/home-credit-default-risk/data
+
+Due to file size and Kaggle licensing, the raw CSV files are not included in this repository.  
+Place the downloaded files in this directory before running the scripts.
+
+**Group Project Repo**
+https://github.com/mcal8055/is_6812_gp
