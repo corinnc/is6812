@@ -73,6 +73,8 @@ still yielded good performance metrics.
 
 <u>*Gradiant Boosted Model:*</u>
 
+**Our chosen/best performing model**
+
 The gradient boosted model yielded better performance. Hyperparameter
 changes yielded marginal if any differences in performance metrics. We
 decided to mirror the hyperparameters as random forest and
