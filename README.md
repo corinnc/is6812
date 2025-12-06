@@ -163,6 +163,7 @@ selected parameters and produced strong performance metrics.
 
 
 **What I Learned From This Project**
+
 After performing predictive modeling across numerous assignments, this project was the first time I was able to apply 
 these models in a practical business use case. I learned how to use business analytics methods from start to finish and 
 how to convey analysis in a business context. Beyond building the predictive models themselves, incorporating profit and loss 
