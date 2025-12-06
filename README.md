@@ -22,8 +22,9 @@ increased client retention and acquisition. This project will also help identify
 at risk of default to ensure no loss in profits.
 Success Metrics:
 The project will be a success if the probability of default increases of Home Credit baseline
-metrics and use those metrics to determine the return on investment and identify increases in
-profitability. Achieving this will be an indicator of model success in determining applicants default
+metrics from our baseline model. We will use ROC-AUC as model success metric when determining which model to use
+as our best performing model. We will also probabily outcomes from the best model to determine the return on investment 
+and identify increases in profitability and losses. Achieving this will be an indicator of model success in determining applicants default
 risk.
 
 **Analytics Approach**
@@ -37,9 +38,23 @@ applicant had with Home Credit, monthly balance of previous credit cards, repaym
 previous loans disbursed, and previous applicants for Home Credit loans. The model will then
 be implemented into Home Credit’s application system and used on future applicants.
 
+In developing this solution, our team evaluated multiple modeling approaches, including logistic regression 
+with LASSO regularization, a neural network–based method, a random forest model, a gradient-boosted model,
+and an ensemble approach combining XGBoost and the neural network to further enhance predictive accuracy 
+and stability. Our best performing model was our Gradient Boosted model. We introduced Platt Scaling 
+Calibration to ensure true and realistic probability estimates. In addition, we calculated profit to loss 
+outcomes across multiple probability thresholds to show expected profits, losses, approvals, and defaults 
+across these thresholds to apply business context and dollars behind our solution. Lastly, to give business 
+application, we used a hypothetical applicant that was inputed into our best performing model to show our
+models performance in real life scenerio.
+
 **Findings**
 
-All findings reported are from my own work from this group project.
+All findings reported below are from my own work for this group project. 
+
+My contributions were: Random Forest model, Gradiant Boosted model, Ablation Table of model performance 
+with and without transactional data, Feature Importance to evaluate with predictors had the highest predtive power, 
+and our hypothetical applicant scenario.
 
 <u>*Random Forest:*</u>
 
@@ -131,6 +146,30 @@ default of .89. Derek is a safe applicant and is not considered high risk.
 
 <img width="225" height="73" alt="Derek Predictions" src="https://github.com/user-attachments/assets/95956031-9155-43c0-ad82-3cd0e14f644b" />
 
+**Difficulties Occurred**
+
+The difficulties our group faced during this project were mainly around the data cleaning process. The 
+datasets were extremely large and contained numerous null values, which made preprocessing time-consuming. 
+A major issue was computational time when running models such as the Neural Network, Random Forest, and Gradient 
+Boosted models. These models require significant compute, especially when performing grid searches to find the best 
+hyperparameters—something that becomes even more challenging with datasets this large.
+
+After merging all of the data sources together, we ended up with thousands of rows and a very high number of predictors. 
+This dramatically increased computational time, and when attempting to run full grid searches for multiple models, 
+we encountered frequent crashes in R and RStudio. For the Random Forest model, I researched recommended hyperparameter ranges 
+for datasets of this size and used those findings to manually set the hyperparameters instead of grid searching. I then 
+mirrored the same manual hyperparameter strategy for the Gradient Boosted model. Both models ran successfully with these manually 
+selected parameters and produced strong performance metrics.
+
+
+**What I Learned From This Project**
+After performing predictive modeling across numerous assignments, this project was the first time I was able to apply 
+these models in a practical business use case. I learned how to use business analytics methods from start to finish and 
+how to convey analysis in a business context. Beyond building the predictive models themselves, incorporating profit and loss 
+numbers tied the whole project together and gave us a real sense of how these scenarios play out in the real world. Presenting 
+our findings as if we were speaking to stakeholders helped us see the bigger picture, and I believe that part of the project 
+benefitted me the most.
+
 
 # Data Source
 
@@ -143,4 +182,6 @@ Due to file size and Kaggle licensing, the raw CSV files are not included in thi
 Place the downloaded files in this directory before running the scripts.
 
 **Group Project Repo**
+Below is the link to our combined group project repository. This shows each individual contributions and workflow through the entirity of the project.
+
 https://github.com/mcal8055/is_6812_gp
