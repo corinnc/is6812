@@ -73,6 +73,8 @@ still yielded good performance metrics.
 
 <u>*Gradiant Boosted Model:*</u>
 
+**Our chosen/best performing model**
+
 The gradient boosted model yielded better performance. Hyperparameter
 changes yielded marginal if any differences in performance metrics. We
 decided to mirror the hyperparameters as random forest and
@@ -183,6 +185,7 @@ Due to file size and Kaggle licensing, the raw CSV files are not included in thi
 Place the downloaded files in this directory before running the scripts.
 
 **Group Project Repo**
+
 Below is the link to our combined group project repository. This shows each individual contributions and workflow through the entirity of the project.
 
 https://github.com/mcal8055/is_6812_gp
