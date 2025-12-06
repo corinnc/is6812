@@ -183,6 +183,7 @@ Due to file size and Kaggle licensing, the raw CSV files are not included in thi
 Place the downloaded files in this directory before running the scripts.
 
 **Group Project Repo**
+
 Below is the link to our combined group project repository. This shows each individual contributions and workflow through the entirity of the project.
 
 https://github.com/mcal8055/is_6812_gp
